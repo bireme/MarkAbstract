@@ -36,8 +36,7 @@ object MarkAbstract extends App {
   if (args.size != 3) usage()
 
   val regexHeader = "<\\?xml version=\"1..\" encoding=\"([^\"]+)\"\\?>".r
-  val regex1 = "\\s*<field name=\"ab[^\"]{0,20}\">".r
-  val regex2 = "(\\s*)<field name=\"(ab[^\"]{0,20})\">([^<]*?)</field>".r
+  val regex = "(\\s*)<field name=\"(ab[^\"]{0,20})\">([^<]*?)</field>".r
 
   // Only letters capital or lower, with and without accents, spaces and ( ) & /
   val regex3 = "(?<=(^|\\.)\\s*)[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
@@ -105,11 +104,9 @@ object MarkAbstract extends App {
     require (dest != null)
 
     while (lines.hasNext) {
-      val line = lines.next
-      regex1.findPrefixOf(line) match {
-        case Some(_) => processAbField(line, lines, dest)
-        case None => dest.write(s"$line\n")
-      }
+      val line = lines.next.trim
+      if (line.startsWith("<field name=\"ab")) processAbField(line, lines, dest)
+      else dest.write(s"$line\n")
     }
   }
 
@@ -124,11 +121,12 @@ object MarkAbstract extends App {
     dest.write(s"$field\n")
 
     field match {
-      case regex2(prefix, tag, content) =>
-        val marked = splitAbstract(content).map { kv =>
-          if (kv._1.isEmpty) kv._2
-          else s"<h2>${kv._1.toUpperCase}</h2>:${kv._2}"
-        }.mkString(" ")
+      case regex(prefix, tag, content) =>
+        val marked = splitAbstract(content).foldLeft[String]("") {
+          case (str,kv) =>
+            if (kv._1.isEmpty) s"$str $kv._2"
+            else s"$str <h2>${kv._1.toUpperCase}</h2>:${kv._2}"
+        }
 
         dest.write(s"""${prefix}<field name="${tag}_mark">${marked}</field>\n""")
     }
