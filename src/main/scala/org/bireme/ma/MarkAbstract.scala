@@ -124,7 +124,7 @@ object MarkAbstract extends App {
       case regex(prefix, tag, content) =>
         val marked = splitAbstract(content).foldLeft[String]("") {
           case (str,kv) =>
-            if (kv._1.isEmpty) s"$str $kv._2"
+            if (kv._1.isEmpty) s"$str ${kv._2}"
             else s"$str <h2>${kv._1.toUpperCase}</h2>:${kv._2}"
         }
 
