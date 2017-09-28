@@ -36,7 +36,7 @@ object MarkAbstract extends App {
   if (args.size != 3) usage()
 
   val regexHeader = "<\\?xml version=\"1..\" encoding=\"([^\"]+)\"\\?>".r
-  val regex1 = "\\s*<field name=\"ab[^\"]{0,20}\">[^<]*?</field>".r
+  val regex1 = "\\s*<field name=\"ab[^\"]{0,20}\">".r
   val regex2 = "(\\s*)<field name=\"(ab[^\"]{0,20})\">([^<]*?)</field>".r
 
   // Only letters capital or lower, with and without accents, spaces and ( ) & /
@@ -149,22 +149,24 @@ object MarkAbstract extends App {
   private def splitAbstract(abs: String): Seq[(String,String)] = {
     require(abs != null)
 
+    val minTags = 3
     val abst = abs.trim
     val matchers = regex3.findAllMatchIn(abst).toSeq
 
-    if (matchers.isEmpty) Seq(("",abs))
+    if ((matchers.size < minTags) ||
+        (matchers.map(_.toString).toSet.size < minTags)) Seq(("", abs))
     else {
       val lastIdx = matchers.size - 1
 
       matchers.zipWithIndex.foldLeft[Seq[(String,String)]] (Seq()) {
-      case (seq, (matcher, idx)) =>
-        val auxSeq = if ((idx == 0) && (matcher.start > 0))
+        case (seq, (matcher, idx)) =>
+          val auxSeq = if ((idx == 0) && (matcher.start > 0))
           seq :+ ("", abs.substring(0, matcher.start).trim) else seq
 
-        val end = if (idx < lastIdx) matchers(idx + 1).start else abst.size
-        val pos = abst.indexOf(":", matcher.start)
-        auxSeq :+ (abst.substring(matcher.start, pos).trim,
-                   abst.substring(pos + 1, end).trim)
+          val end = if (idx < lastIdx) matchers(idx + 1).start else abst.size
+          val pos = abst.indexOf(":", matcher.start)
+          auxSeq :+ (abst.substring(matcher.start, pos).trim,
+                    abst.substring(pos + 1, end).trim)
       }
     }
   }

@@ -15,7 +15,7 @@ val hairyfotrVersion = "0.1.17"
 
 libraryDependencies ++= Seq(
   "org.scalactic" %% "scalactic" % scalaTestVersion,
-  "org.scalatest" %% "scalatest" % scalaTestVersion % "test",
+  "org.scalatest" %% "scalatest" % scalaTestVersion % "test"
 )
 
 logBuffered in Test := false
