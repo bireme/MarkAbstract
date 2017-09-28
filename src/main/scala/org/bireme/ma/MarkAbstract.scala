@@ -37,6 +37,7 @@ object MarkAbstract extends App {
 
   val regexHeader = "<\\?xml version=\"1..\" encoding=\"([^\"]+)\"\\?>".r
   val regex = "(\\s*)<field name=\"(ab[^\"]{0,20})\">([^<]*?)</field>".r
+  val apagar = scala.collection.mutable.Set[String]()
 
   // Only letters capital or lower, with and without accents, spaces and ( ) & /
   val regex3 = "(?<=(^|\\.)\\s*)[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
@@ -124,7 +125,7 @@ object MarkAbstract extends App {
       case regex(prefix, tag, content) =>
         val marked = splitAbstract(content).foldLeft[String]("") {
           case (str,kv) =>
-            if (kv._1.isEmpty) s"$str ${kv._2}"
+            if (kv._1.isEmpty) s"${str}${kv._2}"
             else s"$str <h2>${kv._1.toUpperCase}</h2>:${kv._2}"
         }
 
@@ -154,6 +155,17 @@ object MarkAbstract extends App {
     if ((matchers.size < minTags) ||
         (matchers.map(_.toString).toSet.size < minTags)) Seq(("", abs))
     else {
+matchers.map(_.toString.toLowerCase).foreach {
+  mt => {
+    if (!apagar.contains(mt)) {
+      apagar += mt
+      println(mt)
+    }
+  }
+}
+
+
+
       val lastIdx = matchers.size - 1
 
       matchers.zipWithIndex.foldLeft[Seq[(String,String)]] (Seq()) {
