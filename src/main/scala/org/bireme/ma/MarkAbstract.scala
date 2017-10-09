@@ -26,6 +26,7 @@ import java.nio.charset.Charset
 import java.nio.file.Files
 
 import scala.io.Source
+import scala.util.matching.Regex.Match
 
 object MarkAbstract extends App {
   private def usage(): Unit = {
@@ -40,7 +41,8 @@ object MarkAbstract extends App {
   val apagar = scala.collection.mutable.Set[String]()
 
   // Only letters capital or lower, with and without accents, spaces and ( ) & /
-  val regex3 = "(?<=(^|\\.)\\s*)[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
+  //val regex2 = "(?<=(^|\\.)\\s*)[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
+  val regex2 = "(^|\\.)\\s*[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
 
   processFiles(args(0), args(1), args(2))
 
@@ -107,7 +109,7 @@ object MarkAbstract extends App {
     while (lines.hasNext) {
       val line = lines.next.trim
       if (line.startsWith("<field name=\"ab")) processAbField(line, lines, dest)
-      else dest.write(s"$line\n")
+      else dest.write(line + "\n")
     }
   }
 
@@ -119,17 +121,19 @@ object MarkAbstract extends App {
     require (dest != null)
 
     val field = getAbField(openLine, lines)
-    dest.write(s"$field\n")
+    dest.write(field + "\n")
 
     field match {
       case regex(prefix, tag, content) =>
         val marked = splitAbstract(content).foldLeft[String]("") {
           case (str,kv) =>
-            if (kv._1.isEmpty) s"${str}${kv._2}"
-            else s"$str <h2>${kv._1.toUpperCase}</h2>:${kv._2}"
+            if (kv._1.isEmpty) str + kv._2
+            else str + "<h2>" + kv._1.toUpperCase + "</h2>:" + kv._2
         }
 
-        dest.write(s"""${prefix}<field name="${tag}_mark">${marked}</field>\n""")
+        dest.write(prefix + "<field name=\"" + tag + "_mark\">" + marked +
+                                                                   "</field>\n")
+      case _ => ()
     }
   }
 
@@ -149,35 +153,40 @@ object MarkAbstract extends App {
     require(abs != null)
 
     val minTags = 3
-    val abst = abs.trim
-    val matchers = regex3.findAllMatchIn(abst).toSeq
+    val matchers = regex2.findAllMatchIn(abs).toSeq
 
-    if ((matchers.size < minTags) ||
-        (matchers.map(_.toString).toSet.size < minTags)) Seq(("", abs))
+    if (matchers.map(_.toString).toSet.size < minTags) Seq(("", abs))
     else {
-matchers.map(_.toString.toLowerCase).foreach {
-  mt => {
-    if (!apagar.contains(mt)) {
-      apagar += mt
-      println(mt)
-    }
-  }
-}
-
-
-
       val lastIdx = matchers.size - 1
 
       matchers.zipWithIndex.foldLeft[Seq[(String,String)]] (Seq()) {
         case (seq, (matcher, idx)) =>
-          val auxSeq = if ((idx == 0) && (matcher.start > 0))
-          seq :+ ("", abs.substring(0, matcher.start).trim) else seq
+          val start = realStartPos(matcher)
+          val auxSeq = if ((idx == 0) && (matcher.start > 0)) {
+            val startMat = if (abs(start) == '.') start + 1 else start
+            seq :+ ("", abs.substring(0, startMat))
+          } else seq
 
-          val end = if (idx < lastIdx) matchers(idx + 1).start else abst.size
-          val pos = abst.indexOf(":", matcher.start)
-          auxSeq :+ (abst.substring(matcher.start, pos).trim,
-                    abst.substring(pos + 1, end).trim)
+          val end = if (idx < lastIdx) {
+            val nextMatPos = matchers(idx + 1).start
+            if (abs(nextMatPos) == '.') nextMatPos + 1 else nextMatPos
+          } else abs.size
+          val pos = abs.indexOf(":", start)
+          auxSeq :+ (abs.substring(start, pos).trim,
+                    abs.substring(pos + 1, end).trim)
       }
     }
   }
+
+  /*matchers.map(_.toString.toLowerCase).foreach {
+    mt => {
+      if (!apagar.contains(mt)) {
+        apagar += mt
+        println(mt)
+      }
+    }
+  }*/
+
+  private def realStartPos(matcher: Match): Int = matcher.toString.indexWhere(
+                                               ch => (ch >= 'A') && (ch <= 'z'))
 }
