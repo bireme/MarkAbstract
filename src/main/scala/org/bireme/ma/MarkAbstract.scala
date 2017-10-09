@@ -86,7 +86,9 @@ object MarkAbstract extends App {
 
     val encoding = getFileEncoding(file)
     val src = Source.fromFile(file, encoding)
-    val dest = Files.newBufferedWriter((new File(outDir, file.getName)).toPath(),
+    val dir = new File(outDir)
+    if (!dir.exists) dir.mkdir()
+    val dest = Files.newBufferedWriter((new File(dir, file.getName)).toPath(),
                                        Charset.forName(encoding))
 
     processOtherFields(src.getLines, dest)
@@ -150,7 +152,7 @@ object MarkAbstract extends App {
             else if (shouldMark(kv._1))
               str + "<h2>" + kv._1.toUpperCase + "</h2>:" + kv._2
             else
-              str + kv._1 + ":" + kv._2
+              str + kv._1 + "::" + kv._2
         }
 
         dest.write(prefix + "<field name=\"" + tag + "_mark\">" + marked +
@@ -192,7 +194,7 @@ object MarkAbstract extends App {
 
       matchers.zipWithIndex.foldLeft[Seq[(String,String)]] (Seq()) {
         case (seq, (matcher, idx)) =>
-          val start = realStartPos(matcher)
+          val start = matcher.start + shift(matcher)
           val auxSeq = if ((idx == 0) && (matcher.start > 0)) {
             val startMat = if (abs(start) == '.') start + 1 else start
             seq :+ ("", abs.substring(0, startMat))
@@ -203,6 +205,7 @@ object MarkAbstract extends App {
             if (abs(nextMatPos) == '.') nextMatPos + 1 else nextMatPos
           } else abs.size
           val pos = abs.indexOf(":", start)
+
           auxSeq :+ (abs.substring(start, pos).trim,
                     abs.substring(pos + 1, end).trim)
       }
@@ -228,6 +231,6 @@ object MarkAbstract extends App {
     s2.replaceAll("[^\\w\\-]", " ").trim  // Hifen
   }
 
-  private def realStartPos(matcher: Match): Int = matcher.toString.indexWhere(
+  private def shift(matcher: Match): Int = matcher.toString.indexWhere(
                                                ch => (ch >= 'A') && (ch <= 'z'))
 }
