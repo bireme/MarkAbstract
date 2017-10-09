@@ -150,9 +150,9 @@ object MarkAbstract extends App {
           case (str,kv) =>
             if (kv._1.isEmpty) str + kv._2
             else if (shouldMark(kv._1))
-              str + "<h2>" + kv._1.toUpperCase + "</h2>:" + kv._2
+              str + "<h2>" + kv._1.toUpperCase + "</h2>: " + kv._2
             else
-              str + kv._1 + "::" + kv._2
+              str + kv._1 + ": " + kv._2
         }
 
         dest.write(prefix + "<field name=\"" + tag + "_mark\">" + marked +
@@ -182,7 +182,7 @@ object MarkAbstract extends App {
     if (matchers.map(_.toString).toSet.size < minTags) Seq(("", abs))
     else {
       val lastIdx = matchers.size - 1
-
+/*
       matchers.map(_.toString.toLowerCase).foreach {
         mt => {
           if (!apagar.contains(mt)) {
@@ -191,7 +191,7 @@ object MarkAbstract extends App {
           }
         }
       }
-
+*/
       matchers.zipWithIndex.foldLeft[Seq[(String,String)]] (Seq()) {
         case (seq, (matcher, idx)) =>
           val start = matcher.start + shift(matcher)
