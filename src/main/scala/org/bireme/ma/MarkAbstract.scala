@@ -24,17 +24,19 @@ package org.bireme.ma
 import java.io.{BufferedWriter, File, IOException}
 import java.nio.charset.Charset
 import java.nio.file.Files
+import java.text.Normalizer
+import java.text.Normalizer.Form
 
 import scala.io.Source
 import scala.util.matching.Regex.Match
 
 object MarkAbstract extends App {
   private def usage(): Unit = {
-    Console.err.println("usage: MarkAbstract <inDir> <xmlFileRegexp> <outDir>")
+    Console.err.println("usage: MarkAbstract <prefixFile> <inDir> <xmlFileRegexp> <outDir>")
     System.exit(1)
   }
 
-  if (args.size != 3) usage()
+  if (args.size != 4) usage()
 
   val regexHeader = "<\\?xml version=\"1..\" encoding=\"([^\"]+)\"\\?>".r
   val regex = "(\\s*)<field name=\"(ab[^\"]{0,20})\">([^<]*?)</field>".r
@@ -44,7 +46,24 @@ object MarkAbstract extends App {
   //val regex2 = "(?<=(^|\\.)\\s*)[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
   val regex2 = "(^|\\.)\\s*[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
 
-  processFiles(args(0), args(1), args(2))
+  val prefixes = loadPrefixes(args(0))
+
+  processFiles(args(1), args(2), args(3))
+
+  private def loadPrefixes(prefixFile: String): Set[String] = {
+    require (prefixFile != null)
+
+    val src = Source.fromFile(prefixFile, "utf-8")
+
+    val res = src.getLines.foldLeft[Set[String]](Set()) {
+      case (set,line) =>
+        val lineT = line.trim
+        if (lineT.isEmpty) set else set + uniformString(lineT)
+    }
+
+    src.close()
+    res
+  }
 
   def processFiles(inDir: String,
                    xmlRegExp: String,
@@ -128,7 +147,10 @@ object MarkAbstract extends App {
         val marked = splitAbstract(content).foldLeft[String]("") {
           case (str,kv) =>
             if (kv._1.isEmpty) str + kv._2
-            else str + "<h2>" + kv._1.toUpperCase + "</h2>:" + kv._2
+            else if (shouldMark(kv._1))
+              str + "<h2>" + kv._1.toUpperCase + "</h2>:" + kv._2
+            else
+              str + kv._1 + ":" + kv._2
         }
 
         dest.write(prefix + "<field name=\"" + tag + "_mark\">" + marked +
@@ -159,6 +181,15 @@ object MarkAbstract extends App {
     else {
       val lastIdx = matchers.size - 1
 
+      matchers.map(_.toString.toLowerCase).foreach {
+        mt => {
+          if (!apagar.contains(mt)) {
+            apagar += mt
+            println(mt)
+          }
+        }
+      }
+
       matchers.zipWithIndex.foldLeft[Seq[(String,String)]] (Seq()) {
         case (seq, (matcher, idx)) =>
           val start = realStartPos(matcher)
@@ -178,14 +209,24 @@ object MarkAbstract extends App {
     }
   }
 
-  /*matchers.map(_.toString.toLowerCase).foreach {
-    mt => {
-      if (!apagar.contains(mt)) {
-        apagar += mt
-        println(mt)
-      }
-    }
-  }*/
+  private def shouldMark(in: String): Boolean =
+    uniformString(in).split("\\s+").exists(word => prefixes.contains(word))
+
+  /**
+    * Converts all input charactes into a-z, 0-9, '_', '-' and spaces
+    *
+    * @param in input string to be converted
+    * @return the converted string
+    */
+  private def uniformString(in: String): String = {
+    require (in != null)
+
+    val s1 = Normalizer.normalize(in.trim().toLowerCase(), Form.NFD)
+    val s2 = s1.replaceAll("[\\p{InCombiningDiacriticalMarks}]", "")
+
+    //s2.replaceAll("\\W", " ")
+    s2.replaceAll("[^\\w\\-]", " ").trim  // Hifen
+  }
 
   private def realStartPos(matcher: Match): Int = matcher.toString.indexWhere(
                                                ch => (ch >= 'A') && (ch <= 'z'))
