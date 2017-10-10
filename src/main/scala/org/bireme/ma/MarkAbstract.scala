@@ -257,7 +257,6 @@ object MarkAbstract extends App {
     val s1 = Normalizer.normalize(in.trim().toLowerCase(), Form.NFD)
     val s2 = s1.replaceAll("[\\p{InCombiningDiacriticalMarks}]", "")
 
-    //s2.replaceAll("\\W", " ")
     s2.replaceAll("[^\\w\\-]", " ").trim  // Hifen
   }
 
