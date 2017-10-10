@@ -26,21 +26,28 @@ import java.nio.charset.Charset
 import java.nio.file.Files
 import java.text.Normalizer
 import java.text.Normalizer.Form
+import java.util.{Calendar,GregorianCalendar,TimeZone}
 
 import scala.io.Source
 import scala.util.matching.Regex.Match
 
 object MarkAbstract extends App {
   private def usage(): Unit = {
-    Console.err.println("usage: MarkAbstract <prefixFile> <inDir> <xmlFileRegexp> <outDir>")
+    Console.err.println("usage: MarkAbstract")
+    Console.err.println("\t\t<prefixFile> - file having some words allowed in the abstract tag. For ex, 'Results':")
+    Console.err.println("\t\t<inDir> - directory having the input files used to created the marked ones")
+    Console.err.println("\t\t<xmlFileRegexp> - regular expression to filter input files")
+    Console.err.println("\t\t<outDir> - the directory into where the output files will be written")
+    Console.err.println("\t\t[<days>] - if present only marks the files that are")
+    Console.err.println("\t\tchanged in the last <days>. If absent marks all filtered files")
     System.exit(1)
   }
 
-  if (args.size != 4) usage()
+  if (args.size < 4) usage()
 
+  val days = if (args.size > 4) Some(args(4).toInt) else None
   val regexHeader = "<\\?xml version=\"1..\" encoding=\"([^\"]+)\"\\?>".r
   val regex = "(\\s*)<field name=\"(ab[^\"]{0,20})\">([^<]*?)</field>".r
-  val apagar = scala.collection.mutable.Set[String]()
 
   // Only letters capital or lower, with and without accents, spaces and ( ) & /
   //val regex2 = "(?<=(^|\\.)\\s*)[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
@@ -48,7 +55,7 @@ object MarkAbstract extends App {
 
   val prefixes = loadPrefixes(args(0))
 
-  processFiles(args(1), args(2), args(3))
+  processFiles(args(1), args(2), args(3), days)
 
   private def loadPrefixes(prefixFile: String): Set[String] = {
     require (prefixFile != null)
@@ -67,14 +74,37 @@ object MarkAbstract extends App {
 
   def processFiles(inDir: String,
                    xmlRegExp: String,
-                   outDir: String): Unit = {
+                   outDir: String,
+                   days: Option[Int]): Unit = {
     require (inDir != null)
     require (xmlRegExp != null)
     require (outDir != null)
+    require (days != null)
 
-    (new File(inDir)).listFiles().filter(_.isFile()).foreach {
-      file => if (file.getName() matches xmlRegExp) processFile(file, outDir)
+    val files = new File(inDir).listFiles().filter(_.isFile())
+    val files2 = days match {
+      case Some(ds) => filterFileByModDate(files, ds)
+      case None => files
     }
+    files2.foreach(
+      file => if (file.getName() matches xmlRegExp) processFile(file, outDir)
+    )
+  }
+
+  private def filterFileByModDate(files: Array[File],
+                                  days: Int): Array[File] = {
+    require (files != null)
+
+    val now = new GregorianCalendar(TimeZone.getDefault())
+    val year = now.get(Calendar.YEAR)
+    val month = now.get(Calendar.MONTH)
+    val day = now.get(Calendar.DAY_OF_MONTH)
+    val todayCal = new GregorianCalendar(year, month, day, 0, 0) // begin of today
+    val beforeCal = todayCal.clone().asInstanceOf[GregorianCalendar]
+    beforeCal.add(Calendar.DAY_OF_MONTH, -1 * days)   // begin of date
+    val before = beforeCal.getTime().getTime()        // begin of before date
+
+    files.filter(_.lastModified >= before)
   }
 
   private def processFile(file: File,
