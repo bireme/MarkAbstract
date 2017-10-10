@@ -212,16 +212,7 @@ object MarkAbstract extends App {
     if (matchers.map(_.toString).toSet.size < minTags) Seq(("", abs))
     else {
       val lastIdx = matchers.size - 1
-/*
-      matchers.map(_.toString.toLowerCase).foreach {
-        mt => {
-          if (!apagar.contains(mt)) {
-            apagar += mt
-            println(mt)
-          }
-        }
-      }
-*/
+
       matchers.zipWithIndex.foldLeft[Seq[(String,String)]] (Seq()) {
         case (seq, (matcher, idx)) =>
           val start = matcher.start + shift(matcher)
