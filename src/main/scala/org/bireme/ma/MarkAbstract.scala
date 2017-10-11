@@ -31,6 +31,11 @@ import java.util.{Calendar,GregorianCalendar,TimeZone}
 import scala.io.Source
 import scala.util.matching.Regex.Match
 
+/**
+  * Take a list of xml documents and add to them the the field <ab_mark> or
+  * <ab_*_mark> where every occurrence of the text xxx: yyy of the field <ab> or
+  * <ab_*> is replaced by <h2>xxx</h2>: yyy. Objetive:xxx Conclusions:yyy
+  */
 object MarkAbstract extends App {
   private def usage(): Unit = {
     Console.err.println("usage: MarkAbstract")
@@ -53,11 +58,18 @@ object MarkAbstract extends App {
   //val regex2 = "(?<=(^|\\.)\\s*)[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
   val regex2 = "(^|\\.)\\s*[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
 
-  val prefixes = loadPrefixes(args(0))
+  val prefixes = loadAcceptedWords(args(0))
 
   processFiles(args(1), args(2), args(3), days)
 
-  private def loadPrefixes(prefixFile: String): Set[String] = {
+  /**
+    * Loads a set of words to identy which elements will bt tagged with <h2> from
+    * a file
+    *
+    * @param prefixFile - name of the file having the accepted words
+    * @return the accepted words into a set
+    */
+  private def loadAcceptedWords(prefixFile: String): Set[String] = {
     require (prefixFile != null)
 
     val src = Source.fromFile(prefixFile, "utf-8")
@@ -72,6 +84,16 @@ object MarkAbstract extends App {
     res
   }
 
+  /**
+    * Mark the elements of the abstract with tag <h2>
+    *
+    * @param inDir - input xml files directory
+    * @param xmlRegExp - regular expression used to filter input xml files
+    * @param outDir - output directory where the marked xml files will be created
+    * @param days - number the days from today used to filter modified xml files.
+    *               If None then all xml files will be processed regardless the
+    *               modification date.
+    */
   def processFiles(inDir: String,
                    xmlRegExp: String,
                    outDir: String,
@@ -91,6 +113,14 @@ object MarkAbstract extends App {
     )
   }
 
+  /**
+    * Given a list of files, filter those whose modification date are younger
+    * than x days.
+    *
+    * @param files list of input files to be filtered
+    * @param days number of days used to filter the list of files
+    * @return a list of files filtered by modification date
+    */
   private def filterFileByModDate(files: Array[File],
                                   days: Int): Array[File] = {
     require (files != null)
@@ -107,6 +137,13 @@ object MarkAbstract extends App {
     files.filter(_.lastModified >= before)
   }
 
+  /**
+    * Given a xml file, marks all abstract elements according to a set of
+    * of accepted words, and then write a copy of this files into an output diret
+    *
+    * @param file input xml file
+    * @param outDir output directory of xml files
+    */
   private def processFile(file: File,
                           outDir: String): Unit = {
     require (file != null)
@@ -129,6 +166,12 @@ object MarkAbstract extends App {
     println("- OK")
   }
 
+  /**
+    * Given a xml, figure out its encoding according to its header.
+    *
+    * @param input xml file
+    * @return the xml encoding
+    */
   private def getFileEncoding(file: File): String = {
     def getFileEncoding(lines: Iterator[String]): String = {
       require (lines != null)
@@ -152,6 +195,13 @@ object MarkAbstract extends App {
     encoding
   }
 
+  /**
+    * Copy the xml field into the destination file if it is not of kind abstract,
+    * if it is, then call the function that will mark and save it.
+    *
+    * @param lines the lines of the input xml file
+    * @param dest  the output xml file
+    */
   private def processOtherFields(lines: Iterator[String],
                                  dest: BufferedWriter): Unit = {
     require (lines != null)
@@ -164,6 +214,13 @@ object MarkAbstract extends App {
     }
   }
 
+  /**
+    * Mark with <h2> the abstract tag and save it into the output xml file
+    *
+    * @param openLine the line having the open tag <ab> or <ab_*>
+    * @param lines the lines of the input xml file
+    * @param dest  the output xml file
+    */
   private def processAbField(openLine: String,
                              lines: Iterator[String],
                              dest: BufferedWriter): Unit = {
@@ -191,6 +248,13 @@ object MarkAbstract extends App {
     }
   }
 
+  /**
+    * Retrieve the abstract field <ab>xxx</ab> from an input String
+    *
+    * @param openLine the line having the open tag <ab> or <ab_*>
+    * @param lines the lines of the input xml file
+    * @return the string with the abstract xml element
+    */
   private def getAbField(openLine: String,
                          lines: Iterator[String]): String = {
     require (openLine != null)
@@ -203,6 +267,13 @@ object MarkAbstract extends App {
     )
   }
 
+ /**
+   * Given an input string returns a sequency of prefix and suffix of substrings
+   * of type xxx:yyy as Conclusions:bla bla.
+   *
+   * @param abs input string to be parsed
+   * @return sequency of pairs of prefix and suffix of the parsed substrings
+   */   
   private def splitAbstract(abs: String): Seq[(String,String)] = {
     require(abs != null)
 
@@ -233,6 +304,13 @@ object MarkAbstract extends App {
     }
   }
 
+  /**
+    * Given an input string, tell if it should be marked with <h2> or not according
+    * to the accepted words set
+    *
+    * @param in input string
+    * @return true if the string should be marked and false if not
+    */
   private def shouldMark(in: String): Boolean =
     uniformString(in).split("\\s+").exists(word => prefixes.contains(word))
 
@@ -251,6 +329,12 @@ object MarkAbstract extends App {
     s2.replaceAll("[^\\w\\-]", " ").trim  // Hifen
   }
 
+  /**
+    * Figure out the number of caracteres to jump before to reach a letter
+    *
+    * @param matcher the piece of text matched by the regular expression
+    * @return the number of caracteres to jump before to reach a letter
+    */
   private def shift(matcher: Match): Int = matcher.toString.indexWhere(
                                                ch => (ch >= 'A') && (ch <= 'z'))
 }
