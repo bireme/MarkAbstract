@@ -32,8 +32,8 @@ import scala.io.Source
 import scala.util.matching.Regex.Match
 
 /**
-  * Take a list of xml documents and add to them the the field <ab_mark> or
-  * <ab_*_mark> where every occurrence of the text xxx: yyy of the field <ab> or
+  * Take a list of xml documents and add to them the the field <mark_ab> or
+  * <mark_ab_*> where every occurrence of the text xxx: yyy of the field <ab> or
   * <ab_*> is replaced by <h2>xxx</h2>: yyy. Objetive:xxx Conclusions:yyy
   */
 object MarkAbstract extends App {
@@ -242,7 +242,7 @@ object MarkAbstract extends App {
               str + kv._1 + ": " + kv._2
         }
 
-        dest.write(prefix + "<field name=\"" + tag + "_mark\">" + marked +
+        dest.write(prefix + "<field name=\"mark_" + tag + "\">" + marked +
                                                                    "</field>\n")
       case _ => ()
     }
@@ -273,7 +273,7 @@ object MarkAbstract extends App {
    *
    * @param abs input string to be parsed
    * @return sequency of pairs of prefix and suffix of the parsed substrings
-   */   
+   */
   private def splitAbstract(abs: String): Seq[(String,String)] = {
     require(abs != null)
 
