@@ -237,7 +237,7 @@ object MarkAbstract extends App {
           case (str,kv) =>
             if (kv._1.isEmpty) str + kv._2
             else if (shouldMark(kv._1))
-              str + "<h2>" + kv._1.toUpperCase + "</h2>: " + kv._2
+              str + "&lt;h2&gt;" + kv._1.toUpperCase + ":&lt;/h2&gt; " + kv._2
             else
               str + kv._1 + ": " + kv._2
         }
