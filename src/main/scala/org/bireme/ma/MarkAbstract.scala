@@ -350,7 +350,7 @@ object MarkAbstract extends App {
   }
 
  /**
-   * Given an input string returns a sequency of prefix and suffix of substrings
+   * Given an input string, returns a sequency of prefix and suffix of substrings
    * of type xxx:yyy as Conclusions:bla bla.
    *
    * @param abs input string to be parsed
