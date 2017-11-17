@@ -49,12 +49,12 @@ object MarkAbstract extends App {
     System.exit(1)
   }
 
-  if (args.size < 4) usage()
+  if (args.size < 5) usage()
 
   val days = if (args.size > 5) Some(args(5).toInt) else None
   val regexHeader = "<\\?xml version=\"1..\" encoding=\"([^\"]+)\"\\?>".r
   val regex = "(\\s*)<field name=\"(ab[^\"]{0,20})\">([^<]*?)</field>".r
-  val oneWordDotRegex = "(^|\\.)\\s*([^\\.\\s]+)\\.".r
+  val oneWordDotRegex = "(^|\\.)\\s*([^\\.\\s]+)[\\.\\:]".r
 
   // Only letters capital or lower, with and without accents, spaces and ( ) & /
   //val regex2 = "(?<=(^|\\.)\\s*)[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
