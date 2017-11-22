@@ -59,7 +59,7 @@ object MarkAbstract extends App {
   //val regex2 = "(?<=(^|\\.)\\s*)[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
   val regex2 = "(^|\\.)\\s*[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
 
-  val regex3 = "\\&lt;\\s*([^\\s\\>]+)\\s*\\&gt;".r
+  val regex3 = "\\&lt;/?\\s*([^\\s\\>]+)\\s*\\&gt;".r
   val htmlFmtSet = Set(
     "acronym", "abbr", "address", "b", "bdi", "bdo", "big", "blockquote",
     "center", "cite", "code", "del", "dfn", "em", "font", "i",
@@ -71,7 +71,7 @@ object MarkAbstract extends App {
   val wordDotSet = Set (
     "conclusion", "conclusiones", "conclusions", "conclusao", "conclusoes",
     "method", "methods", "metodology", "metodo", "metodos", "metodologia",
-    "objective", "objectives", "objetivo", "objectivos",
+    "objective", "objectives", "objetivo", "objetivos", "objectivos",
     "result", "results", "resultado", "resultados"
     )
 
