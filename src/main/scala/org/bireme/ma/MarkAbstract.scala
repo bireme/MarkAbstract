@@ -42,16 +42,15 @@ object MarkAbstract extends App {
     Console.err.println("\t\t<prefixFile> - file having some words allowed in the abstract tag. For ex, 'Results':")
     Console.err.println("\t\t<inDir> - directory having the input files used to created the marked ones")
     Console.err.println("\t\t<xmlFileRegexp> - regular expression to filter input files that follow the pattern <word>..<word>:")
-    Console.err.println("\t\t<xmlWordDotFileRegexp> - regular expression to filter input files that follow the pattern <word>.")
     Console.err.println("\t\t<outDir> - the directory into where the output files will be written")
     Console.err.println("\t\t[<days>] - if present only marks the files that are")
     Console.err.println("\t\tchanged in the last <days>. If absent marks all filtered files")
     System.exit(1)
   }
 
-  if (args.size < 5) usage()
+  if (args.size < 4) usage()
 
-  val days = if (args.size > 5) Some(args(5).toInt) else None
+  val days = if (args.size > 4) Some(args(4).toInt) else None
   val regexHeader = "<\\?xml version=\"1..\" encoding=\"([^\"]+)\"\\?>".r
   val regex = "(\\s*)<field name=\"(ab[^\"]{0,20})\">([^<]*?)</field>".r
   val oneWordDotRegex = "(^|\\.)\\s*([^\\.\\s]+)[\\.\\:]".r
@@ -59,6 +58,15 @@ object MarkAbstract extends App {
   // Only letters capital or lower, with and without accents, spaces and ( ) & /
   //val regex2 = "(?<=(^|\\.)\\s*)[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
   val regex2 = "(^|\\.)\\s*[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
+
+  val regex3 = "\\&lt;\\s*([^\\s\\>]+)\\s*\\&gt;".r
+  val htmlFmtSet = Set(
+    "acronym", "abbr", "address", "b", "bdi", "bdo", "big", "blockquote",
+    "center", "cite", "code", "del", "dfn", "em", "font", "i",
+    "ins", "kbd", "mark", "meter", "pre", "progress", "q", "rp",
+    "rt", "ruby", "s", "samp", "small", "strike", "strong", "sub",
+    "sup", "time", "tt", "u", "var", "wbr"
+  )
 
   val wordDotSet = Set (
     "conclusion", "conclusiones", "conclusions", "conclusao", "conclusoes",
@@ -69,7 +77,7 @@ object MarkAbstract extends App {
 
   val prefixes = loadAcceptedWords(args(0))
 
-  processFiles(args(1), args(2), args(3), args(4), days)
+  processFiles(args(1), args(2), args(3), days)
 
   /**
     * Loads a set of words to identy which elements will bt tagged with <h2> from
@@ -98,8 +106,6 @@ object MarkAbstract extends App {
     *
     * @param inDir - input xml files directory
     * @param xmlRegExp - regular expression used to filter input xml files
-    * @param xmlWordDotFileRegExp - regular expression used to filter input xml files
-    *                               that follow the pattern <word>. instead of <word>:
     * @param outDir - output directory where the marked xml files will be created
     * @param days - number the days from today used to filter modified xml files.
     *               If None then all xml files will be processed regardless the
@@ -107,12 +113,10 @@ object MarkAbstract extends App {
     */
   def processFiles(inDir: String,
                    xmlRegExp: String,
-                   xmlWordDotFileRegExp: String,
                    outDir: String,
                    days: Option[Int]): Unit = {
     require (inDir != null)
     require (xmlRegExp != null)
-    require (xmlWordDotFileRegExp != null)
     require (outDir != null)
     require (days != null)
 
@@ -123,8 +127,7 @@ object MarkAbstract extends App {
     }
     files2.foreach { file =>
       val fname = file.getName()
-      if (fname matches xmlWordDotFileRegExp) processFile(file, outDir, true)
-      else if (fname matches xmlRegExp) processFile(file, outDir, false)
+      if (fname matches xmlRegExp) processFile(file, outDir)
     }
   }
 
@@ -158,12 +161,9 @@ object MarkAbstract extends App {
     *
     * @param file input xml file
     * @param outDir output directory of xml files
-    * @param oneWordDotPattern true if the pattern to search is word follow by
-    *                          dot, false otherwise
     */
   private def processFile(file: File,
-                          outDir: String,
-                          oneWordDotPattern: Boolean): Unit = {
+                          outDir: String): Unit = {
     require (file != null)
     require (outDir != null)
 
@@ -176,7 +176,7 @@ object MarkAbstract extends App {
     val dest = Files.newBufferedWriter((new File(dir, file.getName)).toPath(),
                                        Charset.forName(encoding))
 
-    processOtherFields(src.getLines, dest, oneWordDotPattern)
+    processOtherFields(src.getLines, dest)
 
     src.close()
     dest.close()
@@ -219,20 +219,16 @@ object MarkAbstract extends App {
     *
     * @param lines the lines of the input xml file
     * @param dest  the output xml file
-    * @param oneWordDotPattern true if the pattern to search is word follow by
-    *                          dot, false otherwise
     */
   private def processOtherFields(lines: Iterator[String],
-                                 dest: BufferedWriter,
-                                 oneWordDotPattern: Boolean): Unit = {
+                                 dest: BufferedWriter): Unit = {
     require (lines != null)
     require (dest != null)
 
     while (lines.hasNext) {
       val line = lines.next.trim
       if (line.startsWith("<field name=\"ab"))
-        if (oneWordDotPattern) processOneWordDotAbField(line, lines, dest)
-        else processAbField(line, lines, dest)
+        processAbField(line, lines, dest)
       else dest.write(line + "\n")
     }
   }
@@ -252,18 +248,14 @@ object MarkAbstract extends App {
     require (dest != null)
 
     val field = getAbField(openLine, lines)
+
     dest.write(field + "\n")
 
     field match {
       case regex(prefix, tag, content) =>
-        val marked = splitAbstract(content).foldLeft[String]("") {
-          case (str,kv) =>
-            if (kv._1.isEmpty) str + kv._2
-            else if (shouldMark(kv._1))
-              str + "&lt;h2&gt;" + kv._1.toUpperCase + ":&lt;/h2&gt; " + kv._2
-            else
-              str + kv._1 + ": " + kv._2
-        }
+        val noFmtContent = removeFmtHtmlMarks(content) // remove html formatting tags
+        val marked = processWordColonAbField(noFmtContent) getOrElse
+          (processOneWordDotAbField(noFmtContent) getOrElse noFmtContent)
 
         dest.write(prefix + "<field name=\"mark_" + tag + "\">" + marked +
                                                                    "</field>\n")
@@ -272,31 +264,38 @@ object MarkAbstract extends App {
   }
 
   /**
-    * Mark with <h2> the abstract tag and save it into the output xml file
+    * Mark with <h2> the abstract tag and save it into the output xml file.
+    * Looks for '. <word> <word> :' pattern
     *
-    * @param openLine the line having the open tag <ab> or <ab_*>
-    * @param lines the lines of the input xml file
-    * @param dest  the output xml file
+    * @param content abstract field content
+    * @return the marked content
     */
-  private def processOneWordDotAbField(openLine: String,
-                                       lines: Iterator[String],
-                                       dest: BufferedWriter): Unit = {
-    require (openLine != null)
-    require (lines != null)
-    require (dest != null)
+  private def processWordColonAbField(content: String): Option[String] = {
+    require (content != null)
 
-    val field = getAbField(openLine, lines)
-    dest.write(field + "\n")
+    val (out,marked) =
+      splitAbstract(content).foldLeft[(String,Boolean)](("", false)) {
+        case ((str,found),kv) =>
+          if (kv._1.isEmpty) (str + kv._2, found)
+          else if (shouldMark(kv._1))
+            (str + "&lt;h2&gt;" + kv._1.toUpperCase + ":&lt;/h2&gt; " + kv._2, true)
+          else (str + kv._1 + ": " + kv._2, found)
+      }
+    if (marked) Some(out) else None
+  }
 
-    field match {
-      case regex(prefix, tag, content) =>
-        val matchers = oneWordDotRegex findAllMatchIn content
-        val marked = markMatchers(content, 0, matchers, "")
+  /**
+    * Mark with <h2> the abstract tag and save it into the output xml file
+    * Looks for '. <word>.' or '. <word>:' pattern.
+    *
+    * @param content abstract field content
+    * @return the marked content
+    */
+  private def processOneWordDotAbField(content: String): Option[String] = {
+    require (content != null)
 
-        dest.write(prefix + "<field name=\"mark_" + tag + "\">" + marked +
-                                                                   "</field>\n")
-      case _ => ()
-    }
+    val matchers = oneWordDotRegex findAllMatchIn content
+     markMatchers(content, 0, matchers, "", false)
   }
 
   /**
@@ -307,12 +306,14 @@ object MarkAbstract extends App {
     * @param initPos initial position of the text to start marking (used by recursion)
     * @param matchers the list of pattern matchers
     * @param prefix the already marked text (used by recursion)
+    * @param marked if true indicates that the prefix is already marked
     * @return the initial text marked with <h2>
     */
   private def markMatchers(text: String,
                            initPos: Int,
                            matchers: Iterator[Match],
-                           prefix: String): String = {
+                           prefix: String,
+                           marked: Boolean): Option[String] = {
     require (text != null)
     require (initPos >= 0)
     require (matchers != null)
@@ -325,9 +326,12 @@ object MarkAbstract extends App {
       if (wordDotSet.contains(uniformString(word))) {
         val newPrefix = prefix + text.substring(initPos, mat.start(2)) +
           "&lt;h2&gt;" + word.toUpperCase + ":&lt;/h2&gt;"
-        markMatchers(text, mat.end, matchers, newPrefix)
-      } else markMatchers(text, initPos, matchers, prefix)
-    } else prefix + text.substring(initPos)
+        markMatchers(text, mat.end, matchers, newPrefix, true)
+      } else markMatchers(text, initPos, matchers, prefix, marked)
+    } else {
+      if (marked) Some(prefix + text.substring(initPos))
+      else None
+    }
   }
 
   /**
@@ -410,6 +414,20 @@ object MarkAbstract extends App {
 
     s2.replaceAll("[^\\w\\-]", " ").trim  // Hifen
   }
+
+  /**
+    * Remove formatting html marks from a string
+    *
+    * @param str input String
+    * @return the input string with html marks removed
+    */
+    private def removeFmtHtmlMarks(str: String): String = {
+      def replace(mat: Match): Option[String] =
+        if (htmlFmtSet.contains(mat.group(1).toLowerCase)) Some("") else None
+
+      require (str != null)
+      regex3.replaceSomeIn(str, replace)
+    }
 
   /**
     * Figure out the number of caracteres to jump before to reach a letter
