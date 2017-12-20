@@ -9,7 +9,7 @@ Process to put the mark &lt;h2> html tag into each 'abstract' element present in
   * &lt;begin of the sentence&gt;&lt;allowed words type 1&gt;&lt;collon&gt;&lt;other words&gt; - ex: *Conclusion **:** the study...*
   * &lt;dot&gt;&lt;allowed words&gt;&lt;collon&gt;<other words type 1&gt; - ex: *...for that **.** Conclusion **:** the study...*
   * &lt;begin of the sentence&gt;&lt;allowed words type 2&gt;&lt;dot&gt;<other words&gt; - ex: *Conclusion **.** the study...*
-  * &lt;dot&gt;&lt;allowed words&gt;&lt;dor&gt;<other words type 1&gt; - ex: *...for that **.** Conclusion **.** the study...*
+  * &lt;dot&gt;&lt;allowed words&gt;&lt;dor&gt;<other words type 2&gt; - ex: *...for that **.** Conclusion **.** the study...*
 4. Then create a copy of the abstract field with name &lt;mark&gt; or &lt;marl_lang&gt; and mark the &lt;allowed words&gt; with &lt;h2&gt;&lt;allowed words&gt;&lt;/h2&gt;
 
 ## Allowed words - type 1
