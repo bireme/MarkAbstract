@@ -144,7 +144,7 @@ object MarkAbstract extends App {
     files2.foreach { file =>
       val fname = file.getName
       if (fname matches xmlRegExp) {
-        checkXml.check(fname) match {
+        checkXml.check(file.getPath) match {
           case Some(errMess) => println(s"Skipping file [$fname] - $errMess")
           case None => processFile(file, outDir)
         }
@@ -297,7 +297,7 @@ object MarkAbstract extends App {
       val (_, seq, _) = highlighter.highlight("", "", text, tree)
       val (marked: String, tend: Int) = seq.foldLeft("", 0) {
         case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String)) =>
-          val prefix = s"<span class='decs' id=$id>"
+          val prefix = s"<span class='decs' id='$id'>"
           val s = str + text.substring(lpos, termBegin) + prefix + text.substring(termBegin, termEnd + 1) + suffix
           (s, termEnd + 1)
       }
@@ -396,18 +396,18 @@ object MarkAbstract extends App {
   }
 
  /**
-   * Given an input string, returns a sequency of prefix and suffix of substrings
+   * Given an input string, returns a sequence of prefix and suffix of substrings
    * of type xxx:yyy as Conclusions:bla bla.
    *
    * @param abs input string to be parsed
-   * @return sequency of pairs of prefix and suffix of the parsed substrings
+   * @return sequence of pairs of prefix and suffix of the parsed substrings
    */
   private def splitAbstract(abs: String): Seq[(String,String)] = {
     require(abs != null)
 
-    val minTags = 3
+    val minTags = 3 // Requiring at least minTags expressions of type XXXXX: to consider then as a markable tag
     val matchers = regex2.findAllMatchIn(abs).toSeq
-
+    println(s"matchers size=${matchers.size}")
     if (matchers.map(_.toString).toSet.size < minTags) Seq(("", abs))
     else {
       val lastIdx = matchers.size - 1
