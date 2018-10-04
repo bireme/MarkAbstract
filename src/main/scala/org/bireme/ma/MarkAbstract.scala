@@ -26,7 +26,9 @@ import java.nio.charset.Charset
 import java.nio.file.Files
 import java.text.Normalizer
 import java.text.Normalizer.Form
-import java.util.{Calendar,GregorianCalendar,TimeZone}
+import java.util.{Calendar, GregorianCalendar, TimeZone}
+
+import org.bireme.dh.{CharSeq, Highlighter, Tools}
 
 import scala.io.Source
 import scala.util.matching.Regex.Match
@@ -34,7 +36,7 @@ import scala.util.matching.Regex.Match
 /**
   * Take a list of xml documents and add to them the the field <mark_ab> or
   * <mark_ab_*> where every occurrence of the text xxx: yyy of the field <ab> or
-  * <ab_*> is replaced by <h2>xxx</h2>: yyy. Objetive:xxx Conclusions:yyy
+  * <ab_*> is replaced by <h2>xxx</h2>: yyy. Objective:xxx Conclusions:yyy
   */
 object MarkAbstract extends App {
   private def usage(): Unit = {
@@ -43,14 +45,23 @@ object MarkAbstract extends App {
     Console.err.println("\t\t<inDir> - directory having the input files used to created the marked ones")
     Console.err.println("\t\t<xmlFileRegexp> - regular expression to filter input files that follow the pattern <word>..<word>:")
     Console.err.println("\t\t<outDir> - the directory into where the output files will be written")
-    Console.err.println("\t\t[<days>] - if present only marks the files that are")
+    Console.err.println("\t\t[-days=<days>] - if present only marks the files that are")
     Console.err.println("\t\tchanged in the last <days>. If absent marks all filtered files")
+    Console.err.println("\t\t[-deCSPath=<path>] - Path to the Decs' Isis database. if present, mark DeCS descriptors and synonyms in the abstract")
     System.exit(1)
   }
 
-  if (args.size < 4) usage()
+  if (args.length < 4) usage()
 
-  val days = if (args.size > 4) Some(args(4).toInt) else None
+  val parameters = args.drop(4).foldLeft[Map[String,String]](Map()) {
+    case (map,par) =>
+      val split = par.split(" *= *", 2)
+      if (split.size == 1) map + ((split(0).substring(2), ""))
+      else map + ((split(0).substring(1), split(1)))
+  }
+
+  val days = parameters.get("days").map(_.toInt)
+  val deCSPath = parameters.get("deCSPath")
   val regexHeader = "<\\?xml version=\"1..\" encoding=\"([^\"]+)\"\\?>".r
   val regex = "(\\s*)<field name=\"(ab[^\"]{0,20})\">([^<]*?)</field>".r
   val oneWordDotRegex = "(^|\\.)\\s*([^\\.\\s]+)[\\.\\:]".r
@@ -76,6 +87,10 @@ object MarkAbstract extends App {
     )
 
   val prefixes = loadAcceptedWords(args(0))
+
+  val highlighter = new Highlighter()
+  val terms: Map[String,String] = if (deCSPath.nonEmpty) Tools.decs2Set(deCSPath.get) else Map[String,String]()
+  val tree: Map[Char, CharSeq] = if (deCSPath.nonEmpty) highlighter.createTermTree(terms) else Map[Char, CharSeq]()
 
   processFiles(args(1), args(2), args(3), days)
 
@@ -120,14 +135,20 @@ object MarkAbstract extends App {
     require (outDir != null)
     require (days != null)
 
+    val checkXml = new CheckXml()
     val files = new File(inDir).listFiles().filter(_.isFile())
     val files2 = days match {
       case Some(ds) => filterFileByModDate(files, ds)
       case None => files
     }
     files2.foreach { file =>
-      val fname = file.getName()
-      if (fname matches xmlRegExp) processFile(file, outDir)
+      val fname = file.getName
+      if (fname matches xmlRegExp) {
+        checkXml.check(fname) match {
+          case Some(errMess) => println(s"Skipping file [$fname] - $errMess")
+          case None => processFile(file, outDir)
+        }
+      }
     }
   }
 
@@ -143,14 +164,14 @@ object MarkAbstract extends App {
                                   days: Int): Array[File] = {
     require (files != null)
 
-    val now = new GregorianCalendar(TimeZone.getDefault())
+    val now = new GregorianCalendar(TimeZone.getDefault)
     val year = now.get(Calendar.YEAR)
     val month = now.get(Calendar.MONTH)
     val day = now.get(Calendar.DAY_OF_MONTH)
     val todayCal = new GregorianCalendar(year, month, day, 0, 0) // begin of today
     val beforeCal = todayCal.clone().asInstanceOf[GregorianCalendar]
     beforeCal.add(Calendar.DAY_OF_MONTH, -1 * days)   // begin of date
-    val before = beforeCal.getTime().getTime()        // begin of before date
+    val before = beforeCal.getTime.getTime        // begin of before date
 
     files.filter(_.lastModified >= before)
   }
@@ -167,14 +188,14 @@ object MarkAbstract extends App {
     require (file != null)
     require (outDir != null)
 
-    print(s"Processing file: ${file.getName()} ")
+    print(s"Processing file: ${ file.getName} ")
 
     val encoding = getFileEncoding(file)
     val src = Source.fromFile(file, encoding)
     val dir = new File(outDir)
     if (!dir.exists) dir.mkdir()
-    val dest = Files.newBufferedWriter((new File(dir, file.getName)).toPath(),
-                                       Charset.forName(encoding))
+    val dest = Files.newBufferedWriter(
+      new File(dir, file.getName).toPath, Charset.forName(encoding))
 
     processOtherFields(src.getLines, dest)
 
@@ -187,7 +208,7 @@ object MarkAbstract extends App {
   /**
     * Given a xml, figure out its encoding according to its header.
     *
-    * @param input xml file
+    * @param file input xml file
     * @return the xml encoding
     */
   private def getFileEncoding(file: File): String = {
@@ -199,7 +220,7 @@ object MarkAbstract extends App {
         if (line.isEmpty) getFileEncoding(lines)
         else {
           line match {
-            case regexHeader(encoding) => encoding
+            case regexHeader(encod) => encod
             case _ => "iso-8859-1"
           }
         }
@@ -256,11 +277,32 @@ object MarkAbstract extends App {
         val noFmtContent = removeFmtHtmlMarks(content) // remove html formatting tags
         val marked = processWordColonAbField(noFmtContent) getOrElse
           (processOneWordDotAbField(noFmtContent) getOrElse noFmtContent)
+        val marked2 = markDeCSDescriptors(marked)
 
-        dest.write(prefix + "<field name=\"mark_" + tag + "\">" + marked +
+        // <span class="decs" id=""> </span>
+        dest.write(prefix + "<field name=\"mark_" + tag + "\">" + marked2 +
                                                                    "</field>\n")
       case _ => ()
     }
+  }
+
+  /**
+    * Given an input text, mark all DeCS descriptors and dynonyms
+    * @param text input text
+    * @return the input text marked
+    */
+  private def markDeCSDescriptors(text: String): String = {
+    if (deCSPath.nonEmpty) {
+      val suffix = "</span>"
+      val (_, seq, _) = highlighter.highlight("", "", text, tree)
+      val (marked: String, tend: Int) = seq.foldLeft("", 0) {
+        case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String)) =>
+          val prefix = s"<span class='decs' id=$id>"
+          val s = str + text.substring(lpos, termBegin) + prefix + text.substring(termBegin, termEnd + 1) + suffix
+          (s, termEnd + 1)
+      }
+      if (tend >= text.length) marked else marked + text.substring(tend)
+    } else text
   }
 
   /**
@@ -295,7 +337,7 @@ object MarkAbstract extends App {
     require (content != null)
 
     val matchers = oneWordDotRegex findAllMatchIn content
-     markMatchers(content, 0, matchers, "", false)
+     markMatchers(content, 0, matchers, "", marked = false)
   }
 
   /**
@@ -326,7 +368,7 @@ object MarkAbstract extends App {
       if (wordDotSet.contains(uniformString(word))) {
         val newPrefix = prefix + text.substring(initPos, mat.start(2)) +
           "&lt;h2&gt;" + word.toUpperCase + ":&lt;/h2&gt;"
-        markMatchers(text, mat.end, matchers, newPrefix, true)
+        markMatchers(text, mat.end, matchers, newPrefix, marked = true)
       } else markMatchers(text, initPos, matchers, prefix, marked)
     } else {
       if (marked) Some(prefix + text.substring(initPos))
@@ -381,7 +423,7 @@ object MarkAbstract extends App {
           val end = if (idx < lastIdx) {
             val nextMatPos = matchers(idx + 1).start
             if (abs(nextMatPos) == '.') nextMatPos + 1 else nextMatPos
-          } else abs.size
+          } else abs.length
           val pos = abs.indexOf(":", start)
 
           auxSeq :+ (abs.substring(start, pos).trim,
