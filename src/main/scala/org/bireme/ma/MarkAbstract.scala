@@ -407,7 +407,7 @@ object MarkAbstract extends App {
 
     val minTags = 3 // Requiring at least minTags expressions of type XXXXX: to consider then as a markable tag
     val matchers = regex2.findAllMatchIn(abs).toSeq
-    println(s"matchers size=${matchers.size}")
+    //println(s"matchers size=${matchers.size}")
     if (matchers.map(_.toString).toSet.size < minTags) Seq(("", abs))
     else {
       val lastIdx = matchers.size - 1
