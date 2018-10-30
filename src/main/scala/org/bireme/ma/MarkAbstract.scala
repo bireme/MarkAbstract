@@ -1,23 +1,9 @@
 /*=========================================================================
 
-    Copyright © 2017 BIREME/PAHO/WHO
+    MarkAbstract © Pan American Health Organization, 2018.
+    See License at: https://github.com/bireme/MarkAbstract/blob/master/LICENSE.txt
 
-    This file is part of MarkAbstract.
-
-    MarkAbstract is free software: you can redistribute it and/or
-    modify it under the terms of the GNU Lesser General Public License as
-    published by the Free Software Foundation, either version 2.1 of
-    the License, or (at your option) any later version.
-
-    MarkAbstract is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Lesser General Public License for more details.
-
-    You should have received a copy of the GNU Lesser General Public
-    License along with MarkAbstract. If not, see <http://www.gnu.org/licenses/>.
-
-=========================================================================*/
+  ==========================================================================*/
 
 package org.bireme.ma
 
@@ -293,11 +279,11 @@ object MarkAbstract extends App {
     */
   private def markDeCSDescriptors(text: String): String = {
     if (deCSPath.nonEmpty) {
-      val suffix = "</span>"
+      val suffix = "&lt;/span&gt;"
       val (_, seq, _) = highlighter.highlight("", "", text, tree)
       val (marked: String, tend: Int) = seq.foldLeft("", 0) {
         case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String)) =>
-          val prefix = s"<span class='decs' id='$id'>"
+          val prefix = s"""&lt;span class="decs" id="$id"&gt;"""
           val s = str + text.substring(lpos, termBegin) + prefix + text.substring(termBegin, termEnd + 1) + suffix
           (s, termEnd + 1)
       }
