@@ -1,8 +1,6 @@
 /*=========================================================================
-
     MarkAbstract © Pan American Health Organization, 2018.
     See License at: https://github.com/bireme/MarkAbstract/blob/master/LICENSE.txt
-
   ==========================================================================*/
 
 package org.bireme.ma
@@ -70,7 +68,7 @@ object MarkAbstract extends App {
     "method", "methods", "metodology", "metodo", "metodos", "metodologia",
     "objective", "objectives", "objetivo", "objetivos", "objectivos",
     "result", "results", "resultado", "resultados"
-    )
+  )
 
   val prefixes = loadAcceptedWords(args(0))
 
@@ -267,22 +265,22 @@ object MarkAbstract extends App {
 
         // <span class="decs" id=""> </span>
         dest.write(prefix + "<field name=\"mark_" + tag + "\">" + marked2 +
-                                                                   "</field>\n")
+          "</field>\n")
       case _ => ()
     }
   }
 
   /**
-    * Given an input text, mark all DeCS descriptors and dynonyms
+    * Given an input text, mark all DeCS descriptors and synonyms
     * @param text input text
     * @return the input text marked
     */
   private def markDeCSDescriptors(text: String): String = {
     if (deCSPath.nonEmpty) {
       val suffix = "&lt;/span&gt;"
-      val (_, seq, _) = highlighter.highlight("", "", text, tree)
+      val (_, seq, _) = highlighter.highlight("", "", text, tree, true)
       val (marked: String, tend: Int) = seq.foldLeft("", 0) {
-        case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String)) =>
+        case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String, _)) =>
           val prefix = s"""&lt;span class="decs" id="$id"&gt;"""
           val s = str + text.substring(lpos, termBegin) + prefix + text.substring(termBegin, termEnd + 1) + suffix
           (s, termEnd + 1)
@@ -323,7 +321,7 @@ object MarkAbstract extends App {
     require (content != null)
 
     val matchers = oneWordDotRegex findAllMatchIn content
-     markMatchers(content, 0, matchers, "", marked = false)
+    markMatchers(content, 0, matchers, "", marked = false)
   }
 
   /**
@@ -378,16 +376,16 @@ object MarkAbstract extends App {
       if (openLine.contains("</field>")) ""
       else if (lines.hasNext) getAbField(lines.next, lines)
       else throw new IOException("</field> expected")
-    )
+      )
   }
 
- /**
-   * Given an input string, returns a sequence of prefix and suffix of substrings
-   * of type xxx:yyy as Conclusions:bla bla.
-   *
-   * @param abs input string to be parsed
-   * @return sequence of pairs of prefix and suffix of the parsed substrings
-   */
+  /**
+    * Given an input string, returns a sequence of prefix and suffix of substrings
+    * of type xxx:yyy as Conclusions:bla bla.
+    *
+    * @param abs input string to be parsed
+    * @return sequence of pairs of prefix and suffix of the parsed substrings
+    */
   private def splitAbstract(abs: String): Seq[(String,String)] = {
     require(abs != null)
 
@@ -413,7 +411,7 @@ object MarkAbstract extends App {
           val pos = abs.indexOf(":", start)
 
           auxSeq :+ (abs.substring(start, pos).trim,
-                    abs.substring(pos + 1, end).trim)
+            abs.substring(pos + 1, end).trim)
       }
     }
   }
@@ -449,13 +447,13 @@ object MarkAbstract extends App {
     * @param str input String
     * @return the input string with html marks removed
     */
-    private def removeFmtHtmlMarks(str: String): String = {
-      def replace(mat: Match): Option[String] =
-        if (htmlFmtSet.contains(mat.group(1).toLowerCase)) Some("") else None
+  private def removeFmtHtmlMarks(str: String): String = {
+    def replace(mat: Match): Option[String] =
+      if (htmlFmtSet.contains(mat.group(1).toLowerCase)) Some("") else None
 
-      require (str != null)
-      regex3.replaceSomeIn(str, replace)
-    }
+    require (str != null)
+    regex3.replaceSomeIn(str, replace)
+  }
 
   /**
     * Figure out the number of caracteres to jump before to reach a letter
@@ -464,5 +462,5 @@ object MarkAbstract extends App {
     * @return the number of caracteres to jump before to reach a letter
     */
   private def shift(matcher: Match): Int = matcher.toString.indexWhere(
-                                               ch => (ch >= 'A') && (ch <= 'z'))
+    ch => (ch >= 'A') && (ch <= 'z'))
 }
