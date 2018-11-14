@@ -277,8 +277,9 @@ object MarkAbstract extends App {
     */
   private def markDeCSDescriptors(text: String): String = {
     if (deCSPath.nonEmpty) {
-      val suffix = "&lt;/span&gt;"
-      val (_, seq, _) = highlighter.highlight("", "", text, tree, true)
+      val suffix = "&lt;/a&gt;"
+      //val (_, seq, _) = highlighter.highlight("", "", text, tree, skipXmlElem = true)
+      val (_, seq, _) = highlighter.highlight("", "", text, tree, skipXmlElem = false)
       val (marked: String, tend: Int) = seq.foldLeft("", 0) {
         case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String, _)) =>
           val prefix = s"""&lt;span class="decs" id="$id"&gt;"""
