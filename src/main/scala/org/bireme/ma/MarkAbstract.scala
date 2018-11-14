@@ -282,7 +282,7 @@ object MarkAbstract extends App {
       val (_, seq, _) = highlighter.highlight("", "", text, tree, skipXmlElem = false)
       val (marked: String, tend: Int) = seq.foldLeft("", 0) {
         case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String, _)) =>
-          val prefix = s"""&lt;span class="decs" id="$id"&gt;"""
+          val prefix = s"""&lt;a class="decs" id="$id"&gt;"""
           val s = str + text.substring(lpos, termBegin) + prefix + text.substring(termBegin, termEnd + 1) + suffix
           (s, termEnd + 1)
       }
