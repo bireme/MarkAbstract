@@ -282,14 +282,14 @@ object MarkAbstract extends App {
     */
   private def markDeCSDescriptors(text: String): String = {
     if (deCSPath.nonEmpty) {
-      //val suffix = "&lt;/a&gt;"
-      val suffix = "</a>"
+      val suffix = "&lt;/a&gt;"
+      //val suffix = "</a>"
       //val (_, seq, _) = highlighter.highlight("", "", text, tree, skipXmlElem = true)
       val (_, seq, _) = highlighter.highlight("", "", text, tree)
       val (marked: String, tend: Int) = seq.foldLeft[(String, Int)]("", 0) {
         case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String, _)) =>
-          //val prefix = s"""&lt;a class="decs" id="$id"&gt;"""
-          val prefix = s"""<a class="decs" id="$id">"""
+          val prefix = s"""&lt;a class="decs" id="$id"&gt;"""
+          //val prefix = s"""<a class="decs" id="$id">"""
           val s = str + text.substring(lpos, termBegin) + prefix + text.substring(termBegin, termEnd + 1) + suffix
           (s, termEnd + 1)
       }

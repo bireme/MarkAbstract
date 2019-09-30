@@ -10,7 +10,7 @@ lazy val root = (project in file(".")).
     name := "MarkAbstract"
   )
 
-val scalaTestVersion = /*"3.2.0-M1"*/ "3.0.8"
+val scalaTestVersion = "3.2.0-M1" //"3.0.8"
 //val hairyfotrVersion = "0.1.17"
 
 libraryDependencies ++= Seq(
