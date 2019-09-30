@@ -48,13 +48,13 @@ object MarkAbstract extends App {
   val deCSPath = parameters.get("deCSPath")
   val regexHeader = "<\\?xml version=\"1..\" encoding=\"([^\"]+)\"\\?>".r
   val regex = "(\\s*)<field name=\"(ab[^\"]{0,20})\">([^<]*?)</field>".r
-  val oneWordDotRegex = "(^|\\.)\\s*([^\\.\\s]+)[\\.\\:]".r
+  val oneWordDotRegex = "(^|\\.)\\s*([^.\\s]+)[.:]".r
 
   // Only letters capital or lower, with and without accents, spaces and ( ) & /
   //val regex2 = "(?<=(^|\\.)\\s*)[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
-  val regex2 = "(^|\\.)\\s*[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
+  val regex2 = "(^|\\.)\\s*[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}:".r
 
-  val regex3 = "\\&lt;/?\\s*([^\\s\\>]+?)\\s*\\&gt;".r
+  val regex3 = "&lt;/?\\s*([^\\s>]+?)\\s*&gt;".r
   val htmlFmtSet = Set(
     "acronym", "abbr", "address", "b", "bdi", "bdo", "big", "blockquote",
     "center", "cite", "code", "del", "dfn", "em", "font", "i",
@@ -172,7 +172,7 @@ object MarkAbstract extends App {
     require (file != null)
     require (outDir != null)
 
-    print(s"Processing file: ${ file.getName} ")
+    println(s"Processing file: ${ file.getName} ")
 
     val encoding = getFileEncoding(file)
     val src = Source.fromFile(file, encoding)
@@ -186,7 +186,7 @@ object MarkAbstract extends App {
     src.close()
     dest.close()
 
-    println("- OK")
+    println("\nOK")
   }
 
   /**
@@ -196,6 +196,7 @@ object MarkAbstract extends App {
     * @return the xml encoding
     */
   private def getFileEncoding(file: File): String = {
+    @scala.annotation.tailrec
     def getFileEncoding(lines: Iterator[String]): String = {
       require (lines != null)
 
@@ -230,11 +231,15 @@ object MarkAbstract extends App {
     require (lines != null)
     require (dest != null)
 
+    var cur: Int = 0
+
     while (lines.hasNext) {
       val line = lines.next.trim
-      if (line.startsWith("<field name=\"ab"))
+      if (line.startsWith("<field name=\"ab")) {
+        if (cur % 10000 == 0) println(s"+++$cur")
+        cur += 1
         processAbField(line, lines, dest)
-      else dest.write(line + "\n")
+      } else dest.write(line + "\n")
     }
   }
 
@@ -252,16 +257,16 @@ object MarkAbstract extends App {
     require (lines != null)
     require (dest != null)
 
-    val field = getAbField(openLine, lines)
+    val field: String = getAbField(openLine, lines)
 
     dest.write(field + "\n")
 
     field match {
       case regex(prefix, tag, content) =>
-        val noFmtContent = removeFmtHtmlMarks(content) // remove html formatting tags
-        val marked = processWordColonAbField(noFmtContent) getOrElse
+        val noFmtContent: String = removeFmtHtmlMarks(content) // remove html formatting tags
+        val marked: String = processWordColonAbField(noFmtContent) getOrElse
           (processOneWordDotAbField(noFmtContent) getOrElse noFmtContent)
-        val marked2 = markDeCSDescriptors(marked)
+        val marked2: String = markDeCSDescriptors(marked)
 
         // <span class="decs" id=""> </span>
         dest.write(prefix + "<field name=\"mark_" + tag + "\">" + marked2 +
@@ -277,12 +282,14 @@ object MarkAbstract extends App {
     */
   private def markDeCSDescriptors(text: String): String = {
     if (deCSPath.nonEmpty) {
-      val suffix = "&lt;/a&gt;"
+      //val suffix = "&lt;/a&gt;"
+      val suffix = "</a>"
       //val (_, seq, _) = highlighter.highlight("", "", text, tree, skipXmlElem = true)
-      val (_, seq, _) = highlighter.highlight("", "", text, tree, skipXmlElem = false)
-      val (marked: String, tend: Int) = seq.foldLeft("", 0) {
+      val (_, seq, _) = highlighter.highlight("", "", text, tree)
+      val (marked: String, tend: Int) = seq.foldLeft[(String, Int)]("", 0) {
         case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String, _)) =>
-          val prefix = s"""&lt;a class="decs" id="$id"&gt;"""
+          //val prefix = s"""&lt;a class="decs" id="$id"&gt;"""
+          val prefix = s"""<a class="decs" id="$id">"""
           val s = str + text.substring(lpos, termBegin) + prefix + text.substring(termBegin, termEnd + 1) + suffix
           (s, termEnd + 1)
       }
@@ -336,6 +343,7 @@ object MarkAbstract extends App {
     * @param marked if true indicates that the prefix is already marked
     * @return the initial text marked with <h2>
     */
+  @scala.annotation.tailrec
   private def markMatchers(text: String,
                            initPos: Int,
                            matchers: Iterator[Match],
@@ -457,7 +465,7 @@ object MarkAbstract extends App {
   }
 
   /**
-    * Figure out the number of caracteres to jump before to reach a letter
+    * Figure out the number of characters to jump before to reach a letter
     *
     * @param matcher the piece of text matched by the regular expression
     * @return the number of caracteres to jump before to reach a letter
