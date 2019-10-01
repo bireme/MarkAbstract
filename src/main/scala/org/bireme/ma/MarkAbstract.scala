@@ -15,6 +15,7 @@ import java.util.{Calendar, GregorianCalendar, TimeZone}
 import org.bireme.dh.{CharSeq, Highlighter, Tools}
 
 import scala.io.Source
+import scala.util.Try
 import scala.util.matching.Regex.Match
 
 /**
@@ -172,7 +173,8 @@ object MarkAbstract extends App {
     require (file != null)
     require (outDir != null)
 
-    println(s"Processing file: ${ file.getName} ")
+    val fname: String = file.getName
+    println(s"Processing file: $fname")
 
     val encoding = getFileEncoding(file)
     val src = Source.fromFile(file, encoding)
@@ -181,7 +183,7 @@ object MarkAbstract extends App {
     val dest = Files.newBufferedWriter(
       new File(dir, file.getName).toPath, Charset.forName(encoding))
 
-    processOtherFields(src.getLines, dest)
+    processOtherFields(fname, src.getLines, dest)
 
     src.close()
     dest.close()
@@ -223,10 +225,12 @@ object MarkAbstract extends App {
     * Copy the xml field into the destination file if it is not of kind abstract,
     * if it is, then call the function that will mark and save it.
     *
+    * @param fname the processed file name
     * @param lines the lines of the input xml file
     * @param dest  the output xml file
     */
-  private def processOtherFields(lines: Iterator[String],
+  private def processOtherFields(fname: String,
+                                 lines: Iterator[String],
                                  dest: BufferedWriter): Unit = {
     require (lines != null)
     require (dest != null)
@@ -238,7 +242,7 @@ object MarkAbstract extends App {
       if (line.startsWith("<field name=\"ab")) {
         if (cur % 10000 == 0) println(s"+++$cur")
         cur += 1
-        processAbField(line, lines, dest)
+        processAbField(fname, line, lines, dest)
       } else dest.write(line + "\n")
     }
   }
@@ -246,13 +250,16 @@ object MarkAbstract extends App {
   /**
     * Mark with <h2> the abstract tag and save it into the output xml file
     *
+    * @param fname the processed file name
     * @param openLine the line having the open tag <ab> or <ab_*>
     * @param lines the lines of the input xml file
     * @param dest  the output xml file
     */
-  private def processAbField(openLine: String,
+  private def processAbField(fname: String,
+                             openLine: String,
                              lines: Iterator[String],
                              dest: BufferedWriter): Unit = {
+    require (fname != null)
     require (openLine != null)
     require (lines != null)
     require (dest != null)
@@ -266,7 +273,12 @@ object MarkAbstract extends App {
         val noFmtContent: String = removeFmtHtmlMarks(content) // remove html formatting tags
         val marked: String = processWordColonAbField(noFmtContent) getOrElse
           (processOneWordDotAbField(noFmtContent) getOrElse noFmtContent)
-        val marked2: String = markDeCSDescriptors(marked)
+        val marked2: String = markDeCSDescriptors(marked) match {
+          case Right(text) => text
+          case Left(err) =>
+            System.err.println(s"ERROR: fileName=$fname field=$field error=${err.getMessage}")
+            marked
+        }
 
         // <span class="decs" id=""> </span>
         dest.write(prefix + "<field name=\"mark_" + tag + "\">" + marked2 +
@@ -280,21 +292,23 @@ object MarkAbstract extends App {
     * @param text input text
     * @return the input text marked
     */
-  private def markDeCSDescriptors(text: String): String = {
+  private def markDeCSDescriptors(text: String): Either[Throwable, String] = {
     if (deCSPath.nonEmpty) {
-      val suffix = "&lt;/a&gt;"
-      //val suffix = "</a>"
-      //val (_, seq, _) = highlighter.highlight("", "", text, tree, skipXmlElem = true)
-      val (_, seq, _) = highlighter.highlight("", "", text, tree)
-      val (marked: String, tend: Int) = seq.foldLeft[(String, Int)]("", 0) {
-        case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String, _)) =>
-          val prefix = s"""&lt;a class="decs" id="$id"&gt;"""
-          //val prefix = s"""<a class="decs" id="$id">"""
-          val s = str + text.substring(lpos, termBegin) + prefix + text.substring(termBegin, termEnd + 1) + suffix
-          (s, termEnd + 1)
-      }
-      if (tend >= text.length) marked else marked + text.substring(tend)
-    } else text
+      Try {
+        val suffix = "&lt;/a&gt;"
+        //val suffix = "</a>"
+        //val (_, seq, _) = highlighter.highlight("", "", text, tree, skipXmlElem = true)
+        val (_, seq, _) = highlighter.highlight("", "", text, tree)
+        val (marked: String, tend: Int) = seq.foldLeft[(String, Int)]("", 0) {
+          case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String, _)) =>
+            val prefix = s"""&lt;a class="decs" id="$id"&gt;"""
+            //val prefix = s"""<a class="decs" id="$id">"""
+            val s = str + text.substring(lpos, termBegin) + prefix + text.substring(termBegin, termEnd + 1) + suffix
+            (s, termEnd + 1)
+        }
+        if (tend >= text.length) marked else marked + text.substring(tend)
+      }.toEither
+    } else Right(text)
   }
 
   /**
