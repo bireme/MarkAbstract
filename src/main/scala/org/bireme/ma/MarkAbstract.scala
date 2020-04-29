@@ -12,10 +12,12 @@ import java.text.Normalizer
 import java.text.Normalizer.Form
 import java.util.{Calendar, GregorianCalendar, TimeZone}
 
-import org.bireme.dh.{CharSeq, Highlighter, Tools}
+import org.bireme.dh.{Config, Highlighter}
 
+import scala.collection.immutable.HashSet
 import scala.io.Source
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
+import scala.util.matching.Regex
 import scala.util.matching.Regex.Match
 
 /**
@@ -30,9 +32,9 @@ object MarkAbstract extends App {
     Console.err.println("\t\t<inDir> - directory having the input files used to created the marked ones")
     Console.err.println("\t\t<xmlFileRegexp> - regular expression to filter input files that follow the pattern <word>..<word>:")
     Console.err.println("\t\t<outDir> - the directory into where the output files will be written")
-    Console.err.println("\t\t[-days=<days>] - if present only marks the files that are")
+    Console.err.println("\t\t[-days=<days>] - if present only marks the files that has")
     Console.err.println("\t\tchanged in the last <days>. If absent marks all filtered files")
-    Console.err.println("\t\t[-deCSPath=<path>] - Path to the Decs' Isis database. if present, mark DeCS descriptors and synonyms in the abstract")
+    Console.err.println("\t\t[-deCSPath=<path>] - Path to the Decs' Lucene index. if present, mark DeCS descriptors and synonyms in the abstract")
     System.exit(1)
   }
 
@@ -47,15 +49,10 @@ object MarkAbstract extends App {
 
   val days = parameters.get("days").map(_.toInt)
   val deCSPath = parameters.get("deCSPath")
-  val regexHeader = "<\\?xml version=\"1..\" encoding=\"([^\"]+)\"\\?>".r
+  val highlighter = deCSPath.map(new Highlighter(_))
+
   val regex = "(\\s*)<field name=\"(ab[^\"]{0,20})\">([^<]*?)</field>".r
-  val oneWordDotRegex = "(^|\\.)\\s*([^.\\s]+)[.:]".r
 
-  // Only letters capital or lower, with and without accents, spaces and ( ) & /
-  //val regex2 = "(?<=(^|\\.)\\s*)[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}\\:".r
-  val regex2 = "(^|\\.)\\s*[a-zA-Z][^\\u0000-\\u001f\\u0021-\\u0025\\u0027\\u002a-\\u002e\\u0030-\\u0040\\u005b-\\u005e\\u007b-\\u00bf]{0,30}:".r
-
-  val regex3 = "&lt;/?\\s*([^\\s>]+?)\\s*&gt;".r
   val htmlFmtSet = Set(
     "acronym", "abbr", "address", "b", "bdi", "bdo", "big", "blockquote",
     "center", "cite", "code", "del", "dfn", "em", "font", "i",
@@ -64,23 +61,12 @@ object MarkAbstract extends App {
     "sup", "time", "tt", "u", "var", "wbr"
   )
 
-  val wordDotSet = Set (
-    "conclusion", "conclusiones", "conclusions", "conclusao", "conclusoes",
-    "method", "methods", "metodology", "metodo", "metodos", "metodologia",
-    "objective", "objectives", "objetivo", "objetivos", "objectivos",
-    "result", "results", "resultado", "resultados"
-  )
-
-  val prefixes = loadAcceptedWords(args(0))
-
-  val highlighter = new Highlighter()
-  val terms: Map[String,String] = if (deCSPath.nonEmpty) Tools.decs2Set(deCSPath.get) else Map[String,String]()
-  val tree: Map[Char, CharSeq] = if (deCSPath.nonEmpty) highlighter.createTermTree(terms) else Map[Char, CharSeq]()
+  val prefixes: Set[String] = loadAcceptedWords(args(0))
 
   processFiles(args(1), args(2), args(3), days)
 
   /**
-    * Loads a set of words to identy which elements will bt tagged with <h2> from
+    * Loads a set of words to identy which elements will be tagged with <h2> from
     * a file
     *
     * @param prefixFile - name of the file having the accepted words
@@ -91,7 +77,7 @@ object MarkAbstract extends App {
 
     val src = Source.fromFile(prefixFile, "utf-8")
 
-    val res = src.getLines.foldLeft[Set[String]](Set()) {
+    val res = src.getLines.foldLeft[Set[String]](HashSet()) {
       case (set,line) =>
         val lineT = line.trim
         if (lineT.isEmpty) set else set + uniformString(lineT)
@@ -206,6 +192,8 @@ object MarkAbstract extends App {
         val line = lines.next.trim
         if (line.isEmpty) getFileEncoding(lines)
         else {
+          val regexHeader = "<\\?xml version=\"1..\" encoding=\"([^\"]+)\"\\?>".r
+
           line match {
             case regexHeader(encod) => encod
             case _ => "iso-8859-1"
@@ -235,27 +223,36 @@ object MarkAbstract extends App {
     require (lines != null)
     require (dest != null)
 
+    val regex1: Regex =  "<field name=\"la\">([^<]{2})</field>".r
+    val regexAb: Regex = "<field name=\"ab_([a-z]{2})\">".r
     var cur: Int = 0
+    var lang: Option[String] = None
 
     while (lines.hasNext) {
       val line = lines.next.trim
+      if (lang.isEmpty && line.startsWith("<field name=\"la")) {
+        lang = regex1.findFirstMatchIn(line).map(mat => mat.group(1).toLowerCase)
+      }
       if (line.startsWith("<field name=\"ab")) {
-        if (cur % 10000 == 0) println(s"+++$cur")
+        val lang1: Option[String] = regexAb.findFirstMatchIn(line).map(mat => mat.group(1).toLowerCase).orElse(lang)
+        if (cur % 1000 == 0) println(s"+++$cur")
         cur += 1
-        processAbField(fname, line, lines, dest)
+        processAbField(fname, lang1, line, lines, dest)
       } else dest.write(line + "\n")
     }
   }
 
   /**
-    * Mark with <h2> the abstract tag and save it into the output xml file
+    * Mark with <h2> the abstract tag and the DeCS terms saving them into the output xml file
     *
     * @param fname the processed file name
+    * @param lang abstract text language
     * @param openLine the line having the open tag <ab> or <ab_*>
     * @param lines the lines of the input xml file
     * @param dest  the output xml file
     */
   private def processAbField(fname: String,
+                             lang: Option[String],
                              openLine: String,
                              lines: Iterator[String],
                              dest: BufferedWriter): Unit = {
@@ -271,116 +268,65 @@ object MarkAbstract extends App {
     field match {
       case regex(prefix, tag, content) =>
         val noFmtContent: String = removeFmtHtmlMarks(content) // remove html formatting tags
-        val marked: String = processWordColonAbField(noFmtContent) getOrElse
-          (processOneWordDotAbField(noFmtContent) getOrElse noFmtContent)
-        val marked2: String = markDeCSDescriptors(marked) match {
-          case Right(text) => text
-          case Left(err) =>
-            System.err.println(s"ERROR: fileName=$fname field=$field error=${err.getMessage}")
-            marked
-        }
+        val marked: String = markSentence(noFmtContent, prefixes, lang)
 
-        // <span class="decs" id=""> </span>
-        dest.write(prefix + "<field name=\"mark_" + tag + "\">" + marked2 +
-          "</field>\n")
+        dest.write(prefix + "<field name=\"mark_" + tag + "\">" + marked + "</field>\n")
       case _ => ()
     }
   }
 
   /**
+    * Given a sentence mark with <h2> if it contains abstracts parts (OBJECTIVES, METHODS, CONCLUSIONS) and also
+    * mark its DeCS terms
+    * @param sentence input sentence to be marked
+    * @param prefixes a set of keywords of abstract parts (OBJECTIVES, METHODS, CONCLUSIONS, etc)
+    * @param lang the language of the sentence
+    * @return the sentence marked
+    */
+  private def markSentence(sentence: String,
+                           prefixes: Set[String],
+                           lang: Option[String]): String = {
+    if (prefixes.isEmpty) markDeCSDescriptors(sentence, lang)
+    else sentence.split(" *:").map {
+      split =>
+        val (str: String, seqPos: Seq[Int]) = org.bireme.dh.Tools.uniformString2(split)
+        prefixes.find(str.endsWith) match {
+          case Some(prefix) =>
+            val begPos: Int = seqPos(split.length - prefix.length)
+            val decsMarked: String = markDeCSDescriptors(split.substring(0, begPos), lang)
+            decsMarked + "&lt;h2&gt;" + split.substring(begPos) + ":&lt;/h2&gt;"
+          case None => markDeCSDescriptors(split, lang)
+        }
+    }.mkString("")
+  }
+
+  /**
     * Given an input text, mark all DeCS descriptors and synonyms
     * @param text input text
+    * @param lang abstract text language
     * @return the input text marked
     */
-  private def markDeCSDescriptors(text: String): Either[Throwable, String] = {
-    if (deCSPath.nonEmpty) {
+  private def markDeCSDescriptors(text: String,
+                                  lang: Option[String]): String = {
+    if (highlighter.nonEmpty) {
       Try {
         val suffix = "&lt;/a&gt;"
-        //val suffix = "</a>"
-        //val (_, seq, _) = highlighter.highlight("", "", text, tree, skipXmlElem = true)
-        val (_, seq, _) = highlighter.highlight("", "", text, tree)
+        val scanLang: Option[String] = lang.flatMap(str => Some(str).filter(Set("en", "es", "pt", "fr").contains))
+        val conf: Config = Config(scanLang, None, None, scanDescriptors = true, scanSynonyms = true, onlyPreCod = false)
+        val (_, seq, _) = highlighter.get.highlight("", "", text, conf)
         val (marked: String, tend: Int) = seq.foldLeft[(String, Int)]("", 0) {
-          case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String, _)) =>
+          case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String, _, _)) =>
             val prefix = s"""&lt;a class="decs" id="$id"&gt;"""
             //val prefix = s"""<a class="decs" id="$id">"""
             val s = str + text.substring(lpos, termBegin) + prefix + text.substring(termBegin, termEnd + 1) + suffix
             (s, termEnd + 1)
         }
         if (tend >= text.length) marked else marked + text.substring(tend)
-      }.toEither
-    } else Right(text)
-  }
-
-  /**
-    * Mark with <h2> the abstract tag and save it into the output xml file.
-    * Looks for '. <word> <word> :' pattern
-    *
-    * @param content abstract field content
-    * @return the marked content
-    */
-  private def processWordColonAbField(content: String): Option[String] = {
-    require (content != null)
-
-    val (out,marked) =
-      splitAbstract(content).foldLeft[(String,Boolean)](("", false)) {
-        case ((str,found),kv) =>
-          if (kv._1.isEmpty) (str + kv._2, found)
-          else if (shouldMark(kv._1))
-            (str + "&lt;h2&gt;" + kv._1.toUpperCase + ":&lt;/h2&gt; " + kv._2, true)
-          else (str + kv._1 + ": " + kv._2, found)
+      } match {
+        case Success(v) => v
+        case Failure(_) => text
       }
-    if (marked) Some(out) else None
-  }
-
-  /**
-    * Mark with <h2> the abstract tag and save it into the output xml file
-    * Looks for '. <word>.' or '. <word>:' pattern.
-    *
-    * @param content abstract field content
-    * @return the marked content
-    */
-  private def processOneWordDotAbField(content: String): Option[String] = {
-    require (content != null)
-
-    val matchers = oneWordDotRegex findAllMatchIn content
-    markMatchers(content, 0, matchers, "", marked = false)
-  }
-
-  /**
-    * Given a list of matcher mark each match if it is present at a given
-    * authorized list
-    *
-    * @param text input text to be marked
-    * @param initPos initial position of the text to start marking (used by recursion)
-    * @param matchers the list of pattern matchers
-    * @param prefix the already marked text (used by recursion)
-    * @param marked if true indicates that the prefix is already marked
-    * @return the initial text marked with <h2>
-    */
-  @scala.annotation.tailrec
-  private def markMatchers(text: String,
-                           initPos: Int,
-                           matchers: Iterator[Match],
-                           prefix: String,
-                           marked: Boolean): Option[String] = {
-    require (text != null)
-    require (initPos >= 0)
-    require (matchers != null)
-    require(prefix != null)
-
-    if (matchers.hasNext) {
-      val mat = matchers.next
-      val word = mat.group(2)
-
-      if (wordDotSet.contains(uniformString(word))) {
-        val newPrefix = prefix + text.substring(initPos, mat.start(2)) +
-          "&lt;h2&gt;" + word.toUpperCase + ":&lt;/h2&gt;"
-        markMatchers(text, mat.end, matchers, newPrefix, marked = true)
-      } else markMatchers(text, initPos, matchers, prefix, marked)
-    } else {
-      if (marked) Some(prefix + text.substring(initPos))
-      else None
-    }
+    } else text
   }
 
   /**
@@ -403,54 +349,7 @@ object MarkAbstract extends App {
   }
 
   /**
-    * Given an input string, returns a sequence of prefix and suffix of substrings
-    * of type xxx:yyy as Conclusions:bla bla.
-    *
-    * @param abs input string to be parsed
-    * @return sequence of pairs of prefix and suffix of the parsed substrings
-    */
-  private def splitAbstract(abs: String): Seq[(String,String)] = {
-    require(abs != null)
-
-    val minTags = 3 // Requiring at least minTags expressions of type XXXXX: to consider then as a markable tag
-    val matchers = regex2.findAllMatchIn(abs).toSeq
-    //println(s"matchers size=${matchers.size}")
-    if (matchers.map(_.toString).toSet.size < minTags) Seq(("", abs))
-    else {
-      val lastIdx = matchers.size - 1
-
-      matchers.zipWithIndex.foldLeft[Seq[(String,String)]] (Seq()) {
-        case (seq, (matcher, idx)) =>
-          val start = matcher.start + shift(matcher)
-          val auxSeq = if ((idx == 0) && (matcher.start > 0)) {
-            val startMat = if (abs(start) == '.') start + 1 else start
-            seq :+ ("", abs.substring(0, startMat))
-          } else seq
-
-          val end = if (idx < lastIdx) {
-            val nextMatPos = matchers(idx + 1).start
-            if (abs(nextMatPos) == '.') nextMatPos + 1 else nextMatPos
-          } else abs.length
-          val pos = abs.indexOf(":", start)
-
-          auxSeq :+ (abs.substring(start, pos).trim,
-            abs.substring(pos + 1, end).trim)
-      }
-    }
-  }
-
-  /**
-    * Given an input string, tell if it should be marked with <h2> or not according
-    * to the accepted words set
-    *
-    * @param in input string
-    * @return true if the string should be marked and false if not
-    */
-  private def shouldMark(in: String): Boolean =
-    uniformString(in).split("\\s+").exists(word => prefixes.contains(word))
-
-  /**
-    * Converts all input charactes into a-z, 0-9, '_', '-' and spaces
+    * Converts all input charactes into a-z, 0-9, '-' and spaces
     *
     * @param in input string to be converted
     * @return the converted string
@@ -471,19 +370,12 @@ object MarkAbstract extends App {
     * @return the input string with html marks removed
     */
   private def removeFmtHtmlMarks(str: String): String = {
+    val regex = "&lt;/?\\s*([^\\s>]+?)\\s*&gt;".r
+
     def replace(mat: Match): Option[String] =
       if (htmlFmtSet.contains(mat.group(1).toLowerCase)) Some("") else None
 
     require (str != null)
-    regex3.replaceSomeIn(str, replace)
+    regex.replaceSomeIn(str, replace)
   }
-
-  /**
-    * Figure out the number of characters to jump before to reach a letter
-    *
-    * @param matcher the piece of text matched by the regular expression
-    * @return the number of caracteres to jump before to reach a letter
-    */
-  private def shift(matcher: Match): Int = matcher.toString.indexWhere(
-    ch => (ch >= 'A') && (ch <= 'z'))
 }

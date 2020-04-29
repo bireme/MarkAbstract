@@ -1,6 +1,8 @@
 aim
 aims
 analysis
+approach
+availability
 background
 comentario
 comentarios
@@ -25,15 +27,19 @@ justificativa
 justificacion
 hypothesis
 interpretation
+interventions
 introducao
 introduccion
 introduction
 limitation
 limitations
 material
+material and methods
+materiais e metodos
 measure
 measures
 method
+methods
 methodology
 methods
 metodo
@@ -47,14 +53,19 @@ objetivo
 objetivos
 outcome
 outcomes
+participants
+problem
 purpose
 purposes
 purpose(s)
+recommendations
 resultado
 resultados
 result
 results
+setting
 significance
+steps
 subjects
 summary
 synthesis
