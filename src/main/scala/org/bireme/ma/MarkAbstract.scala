@@ -47,9 +47,9 @@ object MarkAbstract extends App {
       else map + ((split(0).substring(1), split(1)))
   }
 
-  val days = parameters.get("days").map(_.toInt)
-  val deCSPath = parameters.get("deCSPath")
-  val highlighter = deCSPath.map(new Highlighter(_))
+  val days: Option[Int] = parameters.get("days").map(_.toInt)
+  val deCSPath: Option[String] = parameters.get("deCSPath")
+  val highlighter: Option[Highlighter] = deCSPath.map(new Highlighter(_))
 
   val regex = "(\\s*)<field name=\"(ab[^\"]{0,20})\">([^<]*?)</field>".r
 
@@ -61,9 +61,15 @@ object MarkAbstract extends App {
     "sup", "time", "tt", "u", "var", "wbr"
   )
 
+  val startTime = new GregorianCalendar().getTimeInMillis
   val prefixes: Set[String] = loadAcceptedWords(args(0))
 
   processFiles(args(1), args(2), args(3), days)
+
+  val endTime = new GregorianCalendar().getTimeInMillis
+  val difTime = (endTime - startTime) / 1000
+
+  println("\nElapsed time: " + difTime + "s")
 
   /**
     * Loads a set of words to identy which elements will be tagged with <h2> from
@@ -234,8 +240,9 @@ object MarkAbstract extends App {
         lang = regex1.findFirstMatchIn(line).map(mat => mat.group(1).toLowerCase)
       }
       if (line.startsWith("<field name=\"ab")) {
-        val lang1: Option[String] = regexAb.findFirstMatchIn(line).map(mat => mat.group(1).toLowerCase).orElse(lang)
-        if (cur % 1000 == 0) println(s"+++$cur")
+        val lang1: Option[String] = regexAb.findFirstMatchIn(line).map(mat => mat.group(1).toLowerCase).
+          orElse(lang).orElse(Some("en"))
+        if (cur % 10000 == 0) println(s"+++$cur")
         cur += 1
         processAbField(fname, lang1, line, lines, dest)
       } else dest.write(line + "\n")
