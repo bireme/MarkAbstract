@@ -15,7 +15,7 @@ import java.util.{Calendar, GregorianCalendar, TimeZone}
 import org.bireme.dh.{Config, Highlighter}
 
 import scala.collection.immutable.HashSet
-import scala.io.Source
+import scala.io.{BufferedSource, Source}
 import scala.util.{Failure, Success, Try}
 import scala.util.matching.Regex
 import scala.util.matching.Regex.Match
@@ -30,7 +30,7 @@ object MarkAbstract extends App {
     Console.err.println("usage: MarkAbstract")
     Console.err.println("\t\t<prefixFile> - file having some words allowed in the abstract tag. For ex, 'Results':")
     Console.err.println("\t\t<inDir> - directory having the input files used to created the marked ones")
-    Console.err.println("\t\t<xmlFileRegexp> - regular expression to filter input files that follow the pattern <word>..<word>:")
+    Console.err.println("\t\t<xmlFileRegexp> - regular expression to filter input files")
     Console.err.println("\t\t<outDir> - the directory into where the output files will be written")
     Console.err.println("\t\t[-days=<days>] - if present only marks the files that has")
     Console.err.println("\t\tchanged in the last <days>. If absent marks all filtered files")
@@ -40,8 +40,8 @@ object MarkAbstract extends App {
 
   if (args.length < 4) usage()
 
-  val parameters = args.drop(4).foldLeft[Map[String,String]](Map()) {
-    case (map,par) =>
+  val parameters: Map[String, String] = args.drop(4).foldLeft[Map[String, String]](Map()) {
+    case (map, par) =>
       val split = par.split(" *= *", 2)
       if (split.size == 1) map + ((split(0).substring(2), ""))
       else map + ((split(0).substring(1), split(1)))
@@ -49,30 +49,51 @@ object MarkAbstract extends App {
 
   val days: Option[Int] = parameters.get("days").map(_.toInt)
   val deCSPath: Option[String] = parameters.get("deCSPath")
-  val highlighter: Option[Highlighter] = deCSPath.map(new Highlighter(_))
+  val mabs = new MarkAbstract(args(0), deCSPath)
 
-  val regex = "(\\s*)<field name=\"(ab[^\"]{0,20})\">([^<]*?)</field>".r
+  val startTime: Long = new GregorianCalendar().getTimeInMillis
 
-  val htmlFmtSet = Set(
-    "acronym", "abbr", "address", "b", "bdi", "bdo", "big", "blockquote",
-    "center", "cite", "code", "del", "dfn", "em", "font", "i",
-    "ins", "kbd", "mark", "meter", "pre", "progress", "q", "rp",
-    "rt", "ruby", "s", "samp", "small", "strike", "strong", "sub",
-    "sup", "time", "tt", "u", "var", "wbr"
-  )
+  Try {
+    mabs.processFiles(args(1), args(2), args(3), days)
+  } match {
+    case Success(_) =>
+      val endTime: Long = new GregorianCalendar().getTimeInMillis
+      val difTime: Long = (endTime - startTime) / 1000
+      println("\nElapsed time: " + difTime + "s")
 
-  val startTime = new GregorianCalendar().getTimeInMillis
-  val prefixes: Set[String] = loadAcceptedWords(args(0))
+    case Failure(exception) =>
+      System.err.println(s"ERROR: ${exception.toString}")
+      System.exit(1)
+  }
+}
 
-  processFiles(args(1), args(2), args(3), days)
+/**
+  * Take a list of xml documents and add to them the the field <mark_ab> or
+  * * <mark_ab_*> where every occurrence of the text xxx: yyy of the field <ab> or
+  * * <ab_*> is replaced by <h2>xxx</h2>: yyy. Objective:xxx Conclusions:yyy
+  *
+  * @param prefixFile file having some words allowed in the abstract tag. For ex, 'Results':
+  * @param deCSPath path to the DeCS lucene index path
+  */
+class MarkAbstract(prefixFile: String,
+                   deCSPath: Option[String]) {
 
-  val endTime = new GregorianCalendar().getTimeInMillis
-  val difTime = (endTime - startTime) / 1000
+    val highlighter: Option[Highlighter] = deCSPath.map(new Highlighter(_))
 
-  println("\nElapsed time: " + difTime + "s")
+    val regex: Regex = "(\\s*)<field name=\"(ab[^\"]{0,20})\">([^<]*?)</field>".r
+
+    val htmlFmtSet: Set[String] = Set(
+      "acronym", "abbr", "address", "b", "bdi", "bdo", "big", "blockquote",
+      "center", "cite", "code", "del", "dfn", "em", "font", "i",
+      "ins", "kbd", "mark", "meter", "pre", "progress", "q", "rp",
+      "rt", "ruby", "s", "samp", "small", "strike", "strong", "sub",
+      "sup", "time", "tt", "u", "var", "wbr"
+    )
+
+    val prefixes: Set[String] = loadAcceptedWords(prefixFile)
 
   /**
-    * Loads a set of words to identy which elements will be tagged with <h2> from
+    * Loads a set of words to identify which elements will be tagged with <h2> from
     * a file
     *
     * @param prefixFile - name of the file having the accepted words
@@ -81,9 +102,9 @@ object MarkAbstract extends App {
   private def loadAcceptedWords(prefixFile: String): Set[String] = {
     require (prefixFile != null)
 
-    val src = Source.fromFile(prefixFile, "utf-8")
+    val src: BufferedSource = Source.fromFile(prefixFile, "utf-8")
 
-    val res = src.getLines.foldLeft[Set[String]](HashSet()) {
+    val res: Set[String] = src.getLines().foldLeft[Set[String]](HashSet()) {
       case (set,line) =>
         val lineT = line.trim
         if (lineT.isEmpty) set else set + uniformString(lineT)
@@ -118,14 +139,15 @@ object MarkAbstract extends App {
       case Some(ds) => filterFileByModDate(files, ds)
       case None => files
     }
-    files2.foreach { file =>
-      val fname = file.getName
-      if (fname matches xmlRegExp) {
-        checkXml.check(file.getPath) match {
-          case Some(errMess) => println(s"Skipping file [$fname] - $errMess")
-          case None => processFile(file, outDir)
+    files2.foreach {
+      file =>
+        val fname = file.getName
+        if (fname matches xmlRegExp) {
+          checkXml.check(file.getPath) match {
+            case Some(errMess) => println(s"Skipping file [$fname] - $errMess")
+            case None => processFile(file, outDir)
+          }
         }
-      }
     }
   }
 
@@ -175,7 +197,7 @@ object MarkAbstract extends App {
     val dest = Files.newBufferedWriter(
       new File(dir, file.getName).toPath, Charset.forName(encoding))
 
-    processOtherFields(fname, src.getLines, dest)
+    processOtherFields(fname, src.getLines(), dest)
 
     src.close()
     dest.close()
@@ -195,7 +217,7 @@ object MarkAbstract extends App {
       require (lines != null)
 
       if (lines.hasNext) {
-        val line = lines.next.trim
+        val line = lines.next().trim
         if (line.isEmpty) getFileEncoding(lines)
         else {
           val regexHeader = "<\\?xml version=\"1..\" encoding=\"([^\"]+)\"\\?>".r
@@ -209,7 +231,7 @@ object MarkAbstract extends App {
     }
 
     val src = Source.fromFile(file, "iso-8859-1")
-    val encoding = getFileEncoding(src.getLines)
+    val encoding = getFileEncoding(src.getLines())
 
     src.close()
     encoding
@@ -235,11 +257,10 @@ object MarkAbstract extends App {
     var lang: Option[String] = None
 
     while (lines.hasNext) {
-      val line = lines.next.trim
+      val line = lines.next().trim
       if (lang.isEmpty && line.startsWith("<field name=\"la")) {
         lang = regex1.findFirstMatchIn(line).map(mat => mat.group(1).toLowerCase)
-      }
-      if (line.startsWith("<field name=\"ab")) {
+      } else if (line.startsWith("<field name=\"ab")) {
         val lang1: Option[String] = regexAb.findFirstMatchIn(line).map(mat => mat.group(1).toLowerCase).
           orElse(lang).orElse(Some("en"))
         if (cur % 10000 == 0) println(s"+++$cur")
@@ -319,7 +340,10 @@ object MarkAbstract extends App {
       Try {
         val suffix = "&lt;/a&gt;"
         val scanLang: Option[String] = lang.flatMap(str => Some(str).filter(Set("en", "es", "pt", "fr").contains))
-        val conf: Config = Config(scanLang, None, None, scanDescriptors = true, scanSynonyms = true, onlyPreCod = false)
+        //val conf: Config = Config(scanLang, None, None, scanDescriptors = true, scanSynonyms = true, onlyPreCod = false)
+        val conf: Config = Config(scanLang, outLang = None, scanMainHeadings = true, scanEntryTerms = true,
+                                  scanQualifiers = true, scanPublicationTypes = true, scanCheckTags= true,
+                                  scanGeographics = true)
         val (_, seq, _) = highlighter.get.highlight("", "", text, conf)
         val (marked: String, tend: Int) = seq.foldLeft[(String, Int)]("", 0) {
           case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String, _, _)) =>
@@ -350,7 +374,7 @@ object MarkAbstract extends App {
 
     openLine + (
       if (openLine.contains("</field>")) ""
-      else if (lines.hasNext) getAbField(lines.next, lines)
+      else if (lines.hasNext) getAbField(lines.next(), lines)
       else throw new IOException("</field> expected")
       )
   }
@@ -380,7 +404,8 @@ object MarkAbstract extends App {
     val regex = "&lt;/?\\s*([^\\s>]+?)\\s*&gt;".r
 
     def replace(mat: Match): Option[String] =
-      if (htmlFmtSet.contains(mat.group(1).toLowerCase)) Some("") else None
+      if (htmlFmtSet.contains(mat.group(1).toLowerCase)) Some("")
+      else None
 
     require (str != null)
     regex.replaceSomeIn(str, replace)

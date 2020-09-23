@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app version="3.0" xmlns="http://java.sun.com/xml/ns/javaee" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-app_3_0.xsd">
+    <display-name>DeCS Highlighter</display-name>
+
+    <context-param>
+        <description>DeCS database directory</description>
+        <param-name>DECS_PATH</param-name>
+        <param-value>/home/javaapps/sbt-projects/DeCSHighlighter/decs/decs</param-value>
+        <!--param-value>decs/decs</param-value-->
+    </context-param>
+
+    <context-param>
+        <description>File having some words allowed in the abstract tag. For ex, 'Results':</description>
+        <param-name>PREFIX_FILE_PATH</param-name>
+        <param-value>prefixes.txt</param-value>
+        <!--param-value>decs/decs</param-value-->
+    </context-param>
+
+    <servlet>
+        <servlet-name>MarkAbstractServlet</servlet-name>
+        <servlet-class>org.bireme.ma.MarkAbstractServlet</servlet-class>
+        <load-on-startup>1</load-on-startup>
+    </servlet>
+
+    <servlet-mapping>
+        <servlet-name>MarkAbstractServlet</servlet-name>
+        <url-pattern>/serv</url-pattern>
+    </servlet-mapping>
+
+    <welcome-file-list>
+        <welcome-file>index.html</welcome-file>
+    </welcome-file-list>
+</web-app>

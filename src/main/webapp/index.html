@@ -1,0 +1,51 @@
+<!-- =========================================================================
+
+DeCSHighlighter © Pan American Health Organization, 2018.
+See License at: https://github.com/bireme/DecsHighlighter/blob/master/LICENSE.txt
+
+========================================================================== -->
+
+<!DOCTYPE html>
+
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        <title>Mark Abstract</title>
+    </head>
+    <body bgcolor="#c6dac9">
+        <h1>Mark Abstract</h1>
+
+        <h2>Description:</h2>
+
+        <p>A web service that takes a list of input xml documents and add to each field &lt;ab&gt; or &lt;ab_*&gt; a field &lt;mark_ab&gt; or &lt;mark_ab_*&gt;
+            where every occurrence of the text xxx: yyy is replaced by the &lt;h2&gt;xxx&lt;/h2&gt;: yyy if xxx belongs to a list of controlled words.</p>
+        <p>In adition to that, it marks every DeCS term it finds ttt in the text with the following mark: &lt;a class="decs" id="id_number"&gt;ttt&lt;/a&gt; </p>
+
+        <h2>Example:</h2>
+        <p>Given an input text:</p>
+        <p>"<field name="ab">BACKGROUND: With the exception of key 'proven successes' in global health, the current regime of global health governance can be understood as transnational and national actors pursuing their own interests under a rational actor model of international cooperation, which fails to provide sufficient justification for an obligation to assist in meeting the health needs of others. An ethical commitment to providing all with the ability to be healthy is required. METHODS: This article develops select components of an alternative model of shared health governance (SHG), which aims to provide a 'road map,' 'focal points' and 'the glue' among various global health actors to better effectuate cooperation on universal ethical principles for an alternative global health equilibrium. Key features of SHG include public moral norms as shared authoritative standards; ethical commitments, shared goals and role allocation; shared sovereignty and constitutional commitments; legitimacy and accountability; country-level attention to international health relations. RESULTS: A framework of social agreement based on 'overlapping consensus' is contrasted against one based on self-interested political bargaining. A global health constitution delineating duties and obligations of global health actors and a global institute of health and medicine for holding actors responsible are proposed. Indicators for empirical assessment of select SHG principles are described. CONCLUSION: Global health actors, including states, must work together to correct and avert global health injustices through a framework of SHG based on shared ethical commitments.</field>"</p>
+        <p>The output text could be:</p>
+        <p>"<field name="mark_ab">&lt;h2&lt;BACKGROUND:&lt;/h2&gt; With the exception of key 'proven successes' in &lt;a class="decs" id="028460"&gt;global health&lt;/a&gt;, the current regime of &lt;a class="decs" id="028460"&gt;global health&lt;/a&gt; &lt;a class="decs" id="056240"&gt;governance&lt;/a&gt; can be understood as transnational and national actors pursuing their own interests under a rational actor model of &lt;a class="decs" id="007555"&gt;international cooperation&lt;/a&gt;, which fails to provide sufficient justification for an obligation to assist in meeting the &lt;a class="decs" id="028448"&gt;health&lt;/a&gt; &lt;a class="decs" id="006453"&gt;needs&lt;/a&gt; of others. An ethical commitment to providing all with the &lt;a class="decs" id="001083"&gt;ability&lt;/a&gt; to be healthy is required. &lt;h2&gt;METHODS:&lt;/h2&gt; This article develops select components of an alternative model of &lt;a class="decs" id="050022"&gt;shared&lt;/a&gt; &lt;a class="decs" id="028448"&gt;health&lt;/a&gt; &lt;a class="decs" id="056240"&gt;governance&lt;/a&gt; (SHG), which aims to provide a 'road &lt;a class="decs" id="033247"&gt;map&lt;/a&gt;,' 'focal points' and 'the &lt;a class="decs" id="000276"&gt;glue&lt;/a&gt;' among various &lt;a class="decs" id="028460"&gt;global health&lt;/a&gt; actors to better effectuate cooperation on universal ethical principles for an alternative &lt;a class="decs" id="028460"&gt;global health&lt;/a&gt; equilibrium. Key features of SHG include public moral norms as &lt;a class="decs" id="050022"&gt;shared&lt;/a&gt; authoritative &lt;a class="decs" id="012436"&gt;standards&lt;/a&gt;; ethical commitments, &lt;a class="decs" id="050022"&gt;shared&lt;/a&gt; &lt;a class="decs" id="006184"&gt;goals&lt;/a&gt; and &lt;a class="decs" id="012755"&gt;role&lt;/a&gt; allocation; &lt;a class="decs" id="050022"&gt;shared&lt;/a&gt; sovereignty and constitutional commitments; &lt;a class="decs" id="023911"&gt;legitimacy&lt;/a&gt; and &lt;a class="decs" id="013325"&gt;accountability&lt;/a&gt;; country-level &lt;a class="decs" id="001294"&gt;attention&lt;/a&gt; to &lt;a class="decs" id="028460"&gt;international health&lt;/a&gt; relations. &lt;h2&gt;RESULTS:&lt;/h2&gt; A framework of social agreement based on 'overlapping &lt;a class="decs" id="037619"&gt;consensus&lt;/a&gt;' is contrasted against one based on &lt;a class="decs" id="004602"&gt;self&lt;/a&gt;-interested political bargaining. A &lt;a class="decs" id="028460"&gt;global health&lt;/a&gt; &lt;a class="decs" id="003268"&gt;constitution&lt;/a&gt; delineating duties and obligations of &lt;a class="decs" id="028460"&gt;global health&lt;/a&gt; actors and a global institute of &lt;a class="decs" id="028448"&gt;health&lt;/a&gt; and &lt;a class="decs" id="008678"&gt;medicine&lt;/a&gt; for holding actors responsible are proposed. &lt;a class="decs" id="007378"&gt;Indicators&lt;/a&gt; for empirical assessment of select SHG principles are described. &lt;h2&gt;CONCLUSION:&lt;/h2&gt; &lt;a class="decs" id="028460"&gt;Global health&lt;/a&gt; actors, including states, must &lt;a class="decs" id="015335"&gt;work&lt;/a&gt; together to correct and avert &lt;a class="decs" id="028460"&gt;global health&lt;/a&gt; injustices through a framework of SHG based on &lt;a class="decs" id="050022"&gt;shared&lt;/a&gt; ethical commitments.</field>"</p>
+
+        <h2>The web service:</h2>
+
+        <p>Path: <i>http://markabstract.bvsalud.org/serv</i></p>
+        <p>Methods: <i>GET or POST</i></p>
+        <p>Consume: <i>application/x-www-form-urlencoded</i></p>
+
+        <p>Parameters:</p>
+        <p>&nbsp;&nbsp;<b>inDir=</b> directory having the input files to be used to created the marked ones</p>
+        <p>&nbsp;&nbsp;<b>xmlRegExp=</b> regular expression to filter the input files</p>
+        <p>&nbsp;&nbsp;<b>outDir=</b> the directory into where the output files will be written</p>
+        <p>Optional parameter:</p>
+        <p>&nbsp;&nbsp;<b>days=</b> if present only marks the files that it has changed in the last &lt;days&gt;. If absent marks all filtered files</p>
+
+        <h2>Example of input:</h2>
+        <p>&nbsp;&nbsp;<i>http://markabstract.bvsalud.org/serv?inDir=/bases/iahx/xml-inbox/bioetica&xmlRegExp=.+\.xml&outDir=/bases/iahx/proc/bioeticaediplomacia/main/xml.index</i></p>
+        <br/>
+        <pre>
+DeCSHighlighter © Pan American Health Organization, 2018.
+See License at: <a href="https://github.com/bireme/MarkAbstract/blob/master/LICENSE.txt">https://github.com/bireme/MarkAbstract/blob/master/LICENSE.txt</a>
+        </pre>
+    </body>
+</html>
