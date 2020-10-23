@@ -11,7 +11,7 @@ lazy val root = (project in file(".")).
   )
 
 val servletApiVersion = "4.0.1"
-val luceneVersion = "8.6.2"
+val luceneVersion = "8.6.3"
 val scalaTestVersion = "3.3.0-SNAP2" //"3.2.0-M1"
 
 libraryDependencies ++= Seq(
