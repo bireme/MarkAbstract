@@ -1,0 +1,21 @@
+Para atualizar o ambiente
+1) Vá para o diretório /home/javaapps/sbt-projects/MarkAbstract/docker
+2) Copie a última versão do arquivo MarkArbstract-assembly-*.jar para o diretório
+3) Crie um índice Lucene do DeCS em decs/decs (DeCS2Lucene.scala do projeto DeCSHighlighter)
+4) Copie o arquivo prefixes.txt para o diretório
+
+Para criar a imagem
+1) Vá para o diretório /home/javaapps/sbt-projects/MarkAbstract/docker
+2) Execute:
+      docker build -t=markabstract .
+      
+Para diminuir o tamanho da imagem
+1) Execute:
+      docker-slim build --http-probe=false markabstract   
+      
+Para executar o MarkAbstract
+1) Execute:
+      ./MarkAbstract_Docker.sh <caminho completo para diretório de entrada> <expressao regular para filtrar arquivos de entrada> <caminho completo para diretório de saida> <caminho completo para diretório de logs>       
+
+   exemplo:
+      ./MarkAbstract_Docker.sh /home/javaapps/sbt-projects/MarkAbstract covid.xml /home/javaapps/sbt-projects/MarkAbstract/out /home/javaapps/sbt-projects/MarkAbstract/logs

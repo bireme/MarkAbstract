@@ -7,10 +7,10 @@
 
 package org.bireme.ma
 
-import javax.xml.parsers.SAXParserFactory
-import org.xml.sax.{ErrorHandler,InputSource,SAXParseException}
+import javax.xml.parsers.{SAXParser, SAXParserFactory}
+import org.xml.sax.{ErrorHandler, InputSource, SAXParseException, XMLReader}
 
-import scala.util.{Failure,Success,Try}
+import scala.util.{Failure, Success, Try}
 
 class SimpleErrorHandler extends ErrorHandler {
   var errMsg = ""
@@ -31,25 +31,28 @@ class SimpleErrorHandler extends ErrorHandler {
 }
 
 class CheckXml {
-  def check(xml: String): Option[String] = {
+  /**
+    * Check if a xml file is well formed
+    * @param xml input xml file
+    * @return Success(error message) or Failure
+    */
+  def check(xml: String): Try[String] = {
     require (xml != null)
 
     Try {
       val factory = SAXParserFactory.newInstance()
       factory.setValidating(false)
-      factory.setNamespaceAware(true)
+      factory.setNamespaceAware(false)
+      factory.setSchema(null)
 
-      val parser = factory.newSAXParser()
-      val reader = parser.getXMLReader
-      val handler = new SimpleErrorHandler()
+      val parser: SAXParser = factory.newSAXParser()
+      val reader: XMLReader = parser.getXMLReader
+      val handler: SimpleErrorHandler = new SimpleErrorHandler()
 
       reader.setErrorHandler(handler)
       reader.parse(new InputSource(xml))
 
-      handler.getErrMsg
-    } match {
-      case Success(errMess) => errMess
-      case Failure(ex) => Some(ex.getMessage)
+      handler.getErrMsg.getOrElse("")
     }
   }
 }
@@ -63,7 +66,7 @@ object CheckXml extends App {
   if (args.length != 1) usage()
 
   (new CheckXml).check(args(0)) match {
-    case Some(msg) => println(s"[${args(0)}] ERROR: $msg")
-    case None => println(s"[${args(0)}] - OK")
+    case Failure(exception) => println(s"[${args(0)}] ERROR: ${exception.toString}")
+    case Success(msg) => println(s"[${args(0)}][$msg] - OK")
   }
 }

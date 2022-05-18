@@ -32,8 +32,8 @@ object MarkAbstract extends App {
     Console.err.println("\t\t<inDir> - directory having the input files used to created the marked ones")
     Console.err.println("\t\t<xmlFileRegexp> - regular expression to filter input files")
     Console.err.println("\t\t<outDir> - the directory into where the output files will be written")
-    Console.err.println("\t\t[-days=<days>] - if present only marks the files that has")
-    Console.err.println("\t\tchanged in the last <days>. If absent marks all filtered files")
+    Console.err.println("\t\t[-days=<days>] - if present only marks the files that were")
+    Console.err.println("\t\tchanged in the last <days>. If absent it will mark all filtered files")
     Console.err.println("\t\t[-deCSPath=<path>] - Path to the Decs' Lucene index. if present, mark DeCS descriptors and synonyms in the abstract")
     System.exit(1)
   }
@@ -53,17 +53,15 @@ object MarkAbstract extends App {
 
   val startTime: Long = new GregorianCalendar().getTimeInMillis
 
-  Try {
-    mabs.processFiles(args(1), args(2), args(3), days)
-  } match {
+  mabs.processFiles(args(1), args(2), args(3), days) match {
+    case Failure(exception) =>
+      System.err.println(s"ERROR: ${exception.toString}")
+      System.exit(1)
+
     case Success(_) =>
       val endTime: Long = new GregorianCalendar().getTimeInMillis
       val difTime: Long = (endTime - startTime) / 1000
       println("\nElapsed time: " + difTime + "s")
-
-    case Failure(exception) =>
-      System.err.println(s"ERROR: ${exception.toString}")
-      System.exit(1)
   }
 }
 
@@ -123,30 +121,38 @@ class MarkAbstract(prefixFile: String,
     * @param days - number the days from today used to filter modified xml files.
     *               If None then all xml files will be processed regardless the
     *               modification date.
+    * @return       Success or Failure
     */
   def processFiles(inDir: String,
                    xmlRegExp: String,
                    outDir: String,
-                   days: Option[Int]): Unit = {
+                   days: Option[Int]): Try[Unit] = {
     require (inDir != null)
     require (xmlRegExp != null)
     require (outDir != null)
     require (days != null)
 
-    val checkXml = new CheckXml()
-    val files = new File(inDir).listFiles().filter(_.isFile())
-    val files2 = days match {
-      case Some(ds) => filterFileByModDate(files, ds)
-      case None => files
-    }
-    files2.foreach {
-      file =>
-        val fname = file.getName
-        if (fname matches xmlRegExp) {
-          checkXml.check(file.getPath) match {
-            case Some(errMess) => println(s"Skipping file [$fname] - $errMess")
-            case None => processFile(file, outDir)
+    Try[Array[File]] {
+      val files: Array[File] = new File(inDir).listFiles().filter(_.isFile()).filter(_.getName.matches(xmlRegExp))
+      days match {
+        case Some(ds) => filterFileByModDate(files, ds)
+        case None => files
+      }
+    }.flatMap {
+      files2 =>
+        val checkXml = new CheckXml()
+        if (files2.length == 1) {
+          val file: File = files2.head
+          checkXml.check(file.getPath).flatMap(_ => processFile(file, outDir))
+        } else {
+          files2.foreach {
+            file =>
+              checkXml.check(file.getPath).flatMap(_ => processFile(file, outDir)) match {
+                case Success(_) => ()
+                case Failure(exception) => println(s"Skipping file [${file.getName}] - ${exception.toString}")
+              }
           }
+          Success(())
         }
     }
   }
@@ -181,28 +187,31 @@ class MarkAbstract(prefixFile: String,
     *
     * @param file input xml file
     * @param outDir output directory of xml files
+    * @return Success or Failure
     */
   private def processFile(file: File,
-                          outDir: String): Unit = {
+                          outDir: String): Try[Unit] = {
     require (file != null)
     require (outDir != null)
 
-    val fname: String = file.getName
-    println(s"Processing file: $fname")
+    Try {
+      val fname: String = file.getName
+      println(s"\nProcessing file: $fname")
 
-    val encoding = getFileEncoding(file)
-    val src = Source.fromFile(file, encoding)
-    val dir = new File(outDir)
-    if (!dir.exists) dir.mkdir()
-    val dest = Files.newBufferedWriter(
-      new File(dir, file.getName).toPath, Charset.forName(encoding))
+      val encoding = getFileEncoding(file)
+      val src = Source.fromFile(file, encoding)
+      val dir = new File(outDir)
+      if (!dir.exists) dir.mkdir()
+      val dest = Files.newBufferedWriter(
+        new File(dir, file.getName).toPath, Charset.forName(encoding))
 
-    processOtherFields(fname, src.getLines(), dest)
+      processOtherFields(fname, src.getLines(), dest)
 
-    src.close()
-    dest.close()
+      src.close()
+      dest.close()
 
-    println("\nOK")
+      println("\nOK")
+    }
   }
 
   /**
