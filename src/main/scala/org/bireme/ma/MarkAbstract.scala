@@ -7,11 +7,10 @@ package org.bireme.ma
 
 import java.io.{BufferedWriter, File, IOException}
 import java.nio.charset.Charset
-import java.nio.file.Files
+import java.nio.file.{Files, Path, StandardCopyOption}
 import java.text.Normalizer
 import java.text.Normalizer.Form
 import java.util.{Calendar, GregorianCalendar, TimeZone}
-
 import org.bireme.dh.{Config, Highlighter}
 
 import scala.collection.immutable.HashSet
@@ -35,33 +34,100 @@ object MarkAbstract extends App {
     Console.err.println("\t\t[-days=<days>] - if present only marks the files that were")
     Console.err.println("\t\tchanged in the last <days>. If absent it will mark all filtered files")
     Console.err.println("\t\t[-deCSPath=<path>] - Path to the Decs' Lucene index. if present, mark DeCS descriptors and synonyms in the abstract")
+    Console.err.println("\t\t[--useTempDirs] - if present will use temporary directories for Docker performance")
     System.exit(1)
   }
 
   if (args.length < 4) usage()
 
-  val parameters: Map[String, String] = args.drop(4).foldLeft[Map[String, String]](Map()) {
+  private val parameters: Map[String, String] = args.drop(4).foldLeft[Map[String, String]](Map()) {
     case (map, par) =>
       val split = par.split(" *= *", 2)
       if (split.size == 1) map + ((split(0).substring(2), ""))
       else map + ((split(0).substring(1), split(1)))
   }
+  private val prefixFile: String = args(0)
+  private val inDir: String = args(1)
+  private val xmlFileRegexp: String = args(2)
+  private val outDir: String = args(3)
 
-  val days: Option[Int] = parameters.get("days").map(_.toInt)
-  val deCSPath: Option[String] = parameters.get("deCSPath")
-  val mabs = new MarkAbstract(args(0), deCSPath)
+  private val days: Option[Int] = parameters.get("days").map(_.toInt)
+  private val deCSPath: Option[String] = parameters.get("deCSPath")
+  private val useTempDirs: Boolean = parameters.contains("useTempDirs")
 
-  val startTime: Long = new GregorianCalendar().getTimeInMillis
+  private val mabs: MarkAbstract = new MarkAbstract(prefixFile, deCSPath)
+  private val startTime: Long = new GregorianCalendar().getTimeInMillis
+  private val result: Try[Unit] = process(inDir, xmlFileRegexp, outDir, useTempDirs, days, mabs)
 
-  mabs.processFiles(args(1), args(2), args(3), days) match {
+  private val endTime: Long = new GregorianCalendar().getTimeInMillis
+  private val difTime: Long = (endTime - startTime) / 1000
+  println("\nElapsed time: " + difTime + "s")
+
+  result match {
+    case Success(_) => System.exit(0)
     case Failure(exception) =>
-      System.err.println(s"ERROR: ${exception.toString}")
+      exception.printStackTrace()
       System.exit(1)
+  }
 
-    case Success(_) =>
-      val endTime: Long = new GregorianCalendar().getTimeInMillis
-      val difTime: Long = (endTime - startTime) / 1000
-      println("\nElapsed time: " + difTime + "s")
+  private def createTmpDir(prefix: String): Try[Path] = {
+    Try (Files.createTempDirectory(new File(".", "tmp").toPath, prefix))
+  }
+  private def delTmpDir(tmpDir: Path): Try[Unit] = {
+    Try {
+      val delFile: File = tmpDir.toFile
+
+      delFile.listFiles().foreach {
+        dfile =>
+          if (dfile.isDirectory) delTmpDir(dfile.toPath)
+          else dfile.delete()
+      }
+      Files.delete(delFile.toPath)
+    }
+  }
+  private def copyFilesToDir(sourceDir: Path,
+                             filter: Option[String],
+                             destinationDir: Path): Try[Unit] = {
+    Try {
+      val sDir: File = sourceDir.toFile
+      val dDir: File = destinationDir.toFile
+
+      require(sDir.exists())
+      require(dDir.exists())
+
+      filter match {
+        case Some(flt) =>
+          sDir.listFiles().foreach {
+            file =>
+              if (file.getName.matches(flt)) {
+                Files.copy(file.toPath, new File(dDir, file.getName).toPath, StandardCopyOption.REPLACE_EXISTING)
+              }
+          }
+        case None =>
+          sDir.listFiles().foreach {
+            file => Files.copy(file.toPath, new File(dDir, file.getName).toPath, StandardCopyOption.REPLACE_EXISTING)
+          }
+      }
+    }
+  }
+
+  private def process(inDir: String,
+                      xmlFileRegexp: String,
+                      outDir: String,
+                      useTempDirs: Boolean,
+                      days: Option[Int],
+                      mabs: MarkAbstract): Try[Unit] = {
+    if (useTempDirs) {
+      for (
+        inTmpDir <- createTmpDir("in");
+        outTmpDir <- createTmpDir("out");
+        _ <- copyFilesToDir(new File(inDir).toPath, Some(xmlFileRegexp), inTmpDir);
+        _ <- mabs.processFiles(inTmpDir.toString, xmlFileRegexp, outTmpDir.toString, days);
+        _ <- copyFilesToDir(outTmpDir, None, new File(outDir).toPath);
+        _ <- delTmpDir(inTmpDir);
+        _ <- delTmpDir(outTmpDir)
+      ) yield Success[Unit](())
+    } else mabs.processFiles(inDir, xmlFileRegexp, outDir, days)
   }
 }
 
@@ -76,11 +142,11 @@ object MarkAbstract extends App {
 class MarkAbstract(prefixFile: String,
                    deCSPath: Option[String]) {
 
-    val highlighter: Option[Highlighter] = deCSPath.map(new Highlighter(_))
+  private  val highlighter: Option[Highlighter] = deCSPath.map(new Highlighter(_))
 
-    val regex: Regex = "(\\s*)<field name=\"(ab[^\"]{0,20})\">([^<]*?)</field>".r
+  private val regex: Regex = "(\\s*)<field name=\"(ab[^\"]{0,20})\">([^<]*?)</field>".r
 
-    val htmlFmtSet: Set[String] = Set(
+  private val htmlFmtSet: Set[String] = Set(
       "acronym", "abbr", "address", "b", "bdi", "bdo", "big", "blockquote",
       "center", "cite", "code", "del", "dfn", "em", "font", "i",
       "ins", "kbd", "mark", "meter", "pre", "progress", "q", "rp",
@@ -88,7 +154,7 @@ class MarkAbstract(prefixFile: String,
       "sup", "time", "tt", "u", "var", "wbr"
     )
 
-    val prefixes: Set[String] = loadAcceptedWords(prefixFile)
+  private val prefixes: Set[String] = loadAcceptedWords(prefixFile)
 
   /**
     * Loads a set of words to identify which elements will be tagged with <h2> from
@@ -222,14 +288,14 @@ class MarkAbstract(prefixFile: String,
     */
   private def getFileEncoding(file: File): String = {
     @scala.annotation.tailrec
-    def getFileEncoding(lines: Iterator[String]): String = {
+    def getFileEncoding1(lines: Iterator[String]): String = {
       require (lines != null)
 
       if (lines.hasNext) {
         val line = lines.next().trim
-        if (line.isEmpty) getFileEncoding(lines)
+        if (line.isEmpty) getFileEncoding1(lines)
         else {
-          val regexHeader = "<\\?xml version=\"1..\" encoding=\"([^\"]+)\"\\?>".r
+          val regexHeader = "<\\?xml +version=[\"']1..[\"'] +encoding=[\"']([^\"]+)[\"']\\?>".r
 
           line match {
             case regexHeader(encod) => encod
@@ -240,7 +306,7 @@ class MarkAbstract(prefixFile: String,
     }
 
     val src = Source.fromFile(file, "iso-8859-1")
-    val encoding = getFileEncoding(src.getLines())
+    val encoding = getFileEncoding1(src.getLines())
 
     src.close()
     encoding
@@ -275,7 +341,10 @@ class MarkAbstract(prefixFile: String,
         if (cur % 10000 == 0) println(s"+++$cur")
         cur += 1
         processAbField(fname, lang1, line, lines, dest)
-      } else dest.write(line + "\n")
+      } else {
+        dest.write(line)
+        dest.newLine()
+      }
     }
   }
 
@@ -300,7 +369,8 @@ class MarkAbstract(prefixFile: String,
 
     val field: String = getAbField(openLine, lines)
 
-    dest.write(field + "\n")
+    dest.write(field)
+    dest.newLine()
 
     field match {
       case regex(prefix, tag, content) =>
@@ -410,13 +480,13 @@ class MarkAbstract(prefixFile: String,
     * @return the input string with html marks removed
     */
   private def removeFmtHtmlMarks(str: String): String = {
-    val regex = "&lt;/?\\s*([^\\s>]+?)\\s*&gt;".r
+    val regex1 = "&lt;/?\\s*([^\\s>]+?)\\s*&gt;".r
 
     def replace(mat: Match): Option[String] =
       if (htmlFmtSet.contains(mat.group(1).toLowerCase)) Some("")
       else None
 
     require (str != null)
-    regex.replaceSomeIn(str, replace)
+    regex1.replaceSomeIn(str, replace)
   }
 }
