@@ -5,8 +5,9 @@
 
 package org.bireme.ma
 
-import javax.servlet.ServletConfig
-import javax.servlet.http.{HttpServlet, HttpServletRequest, HttpServletResponse}
+import jakarta.servlet.ServletConfig
+import jakarta.servlet.http.{HttpServlet, HttpServletRequest, HttpServletResponse}
+
 
 class MarkAbstractServlet extends HttpServlet {
   var mabs: MarkAbstract = _
