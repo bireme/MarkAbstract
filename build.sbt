@@ -21,6 +21,7 @@ libraryDependencies ++= Seq(
   "org.apache.lucene" % "lucene-core" % luceneVersion,
   //"org.apache.lucene" % "lucene-analyzers-common" % luceneVersion,
   //"org.apache.lucene" % "lucene-analysis-common" % luceneVersion,
+  "org.apache.lucene" % "lucene-queryparser" % luceneVersion,
   "org.apache.lucene" % "lucene-backward-codecs" % luceneVersion,
   "org.scalactic" %% "scalactic" % scalaTestVersion,
   "org.scalatest" %% "scalatest" % scalaTestVersion % "test"

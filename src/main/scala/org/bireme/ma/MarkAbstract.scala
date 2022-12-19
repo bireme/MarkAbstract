@@ -399,7 +399,8 @@ class MarkAbstract(prefixFile: String,
         val (str: String, seqPos: Seq[Int]) = org.bireme.dh.Tools.uniformString2(split)
         prefixes.find(str.endsWith) match {
           case Some(prefix) =>
-            val begPos: Int = seqPos(split.length - prefix.length)
+            //val begPos: Int = seqPos(split.length - prefix.length)
+            val begPos: Int = seqPos(seqPos.length - prefix.length)
             val decsMarked: String = markDeCSDescriptors(split.substring(0, begPos), lang)
             decsMarked + "&lt;h2&gt;" + split.substring(begPos) + ":&lt;/h2&gt;"
           case None => markDeCSDescriptors(split, lang)
