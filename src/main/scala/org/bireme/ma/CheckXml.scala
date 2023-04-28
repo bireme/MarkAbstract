@@ -13,7 +13,7 @@ import org.xml.sax.{ErrorHandler, InputSource, SAXParseException, XMLReader}
 import scala.util.{Failure, Success, Try}
 
 class SimpleErrorHandler extends ErrorHandler {
-  var errMsg = ""
+  private var errMsg = ""
 
   def warning(e: SAXParseException): Unit = {
     errMsg = e.getMessage
