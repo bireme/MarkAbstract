@@ -199,6 +199,9 @@ class MarkAbstract(prefixFile: String,
     require (days != null)
 
     Try[Array[File]] {
+      val inDirectory: File = new File(inDir)
+      assert (inDirectory.isDirectory, s"${inDirectory.getAbsolutePath} is not a directory")
+      
       val files: Array[File] = new File(inDir).listFiles().filter(_.isFile()).filter(_.getName.matches(xmlRegExp))
       days match {
         case Some(ds) => filterFileByModDate(files, ds)
