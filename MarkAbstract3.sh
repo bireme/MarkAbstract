@@ -26,7 +26,7 @@ java  -Xms1g -Xmx12g -cp target/scala-2.13/MarkAbstract-assembly-2.0.0.jar:lib/D
 MA="$?"
 
 if [ $MA -ne 0 ]; then
-  sendemail -f appofi@bireme.org -u "Mark Abstract Service - Xmls creation ERROR - $(date '+%Y%m%d')" -m "Mark Abstract Service - Erro na criacao dos xmls marcados - $1 $2 $3 $4 $5 $6" -t barbieri@paho.org -cc ofi@bireme.org -s esmeralda.bireme.br -a logs/MarkAbstract_$NOW.log
+  sendemail -f appofi@bireme.org -u "Mark Abstract Service - Xmls creation ERROR - $(date '+%Y%m%d')" -m "Mark Abstract Service - Erro na criacao dos xmls marcados - $1 $2 $3 $4 $5 $6" -t barbieri@paho.org -cc appofi@bireme.org -s esmeralda.bireme.br -a logs/MarkAbstract_$NOW.log
   [ $MA -ne 0 ] && echo "Falha no envio de e-mail"
   exit 1
 else
