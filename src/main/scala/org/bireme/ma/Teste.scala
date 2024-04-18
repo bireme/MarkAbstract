@@ -27,7 +27,7 @@ object Teste extends App {
 
   // Iterate through the results:
   for (i <-  hits.indices) {
-    val hitDoc = isearcher.doc(hits(i).doc)
+    val hitDoc = isearcher.storedFields().document(hits(i).doc)
     assert("periodontoses".equals(hitDoc.get("term_normalized")))
   }
 
