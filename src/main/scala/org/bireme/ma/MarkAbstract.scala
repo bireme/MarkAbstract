@@ -42,8 +42,8 @@ object MarkAbstract extends App {
 
   private val parameters: Map[String, String] = args.drop(4).foldLeft[Map[String, String]](Map()) {
     case (map, par) =>
-      val split = par.split(" *= *", 2)
-      if (split.size == 1) map + ((split(0).substring(2), ""))
+      val split: Array[String] = par.split(" *= *", 2)
+      if (split.length == 1) map + ((split(0).substring(2), ""))
       else map + ((split(0).substring(1), split(1)))
   }
   private val prefixFile: String = args(0)
@@ -201,7 +201,7 @@ class MarkAbstract(prefixFile: String,
     Try[Array[File]] {
       val inDirectory: File = new File(inDir)
       assert (inDirectory.isDirectory, s"${inDirectory.getAbsolutePath} is not a directory")
-      
+
       val files: Array[File] = new File(inDir).listFiles().filter(_.isFile()).filter(_.getName.matches(xmlRegExp))
       days match {
         case Some(ds) => filterFileByModDate(files, ds)

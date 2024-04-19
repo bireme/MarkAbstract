@@ -33,9 +33,8 @@ trapExit :=  false  // To allow System.exit() without an exception (TestIndex.sc
 scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature", "-Ywarn-unused")
 //addCompilerPlugin("org.psywerx.hairyfotr" %% "linter" % hairyfotrVersion)
 
-enablePlugins(JettyPlugin)
-
-containerPort := 7272
+//enablePlugins(JettyPlugin)
+//containerPort := 7272
 
 /*assembly / assemblyMergeStrategy  := {
   case PathList("META-INF", xs @ _*) => MergeStrategy.discard
