@@ -429,7 +429,7 @@ class MarkAbstract(prefixFile: String,
                                   scanGeographics = true)
         val (_, seq, _) = highlighter.get.highlight("", "", text, conf)
         val (marked: String, tend: Int) = seq.foldLeft[(String, Int)]("", 0) {
-          case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String, _, _)) =>
+          case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String, _, _, _)) =>
             val prefix = s"""&lt;a class="decs" id="$id"&gt;"""
             //val prefix = s"""<a class="decs" id="$id">"""
             val s = str + text.substring(lpos, termBegin) + prefix + text.substring(termBegin, termEnd + 1) + suffix
