@@ -1,7 +1,7 @@
 lazy val commonSettings = Seq(
   organization := "br.bireme",
   version := "2.0.0",
-  scalaVersion := "2.13.10"
+  scalaVersion := "2.13.16"
 )
 
 lazy val root = (project in file(".")).
@@ -11,8 +11,8 @@ lazy val root = (project in file(".")).
   )
 
 //val servletApiVersion = "4.0.1"
-val jakartaServletApiVersion = "6.0.0"
-val luceneVersion = "9.5.0" //"8.11.1" //"9.1.0" //"8.8.2" //"8.6.3"
+val jakartaServletApiVersion = "6.1.0"
+val luceneVersion = "9.12.1" //"9.5.0" //"8.11.1" //"9.1.0" //"8.8.2" //"8.6.3"
 val scalaTestVersion = "3.3.0-SNAP4" //"3.3.0-SNAP2"
 
 libraryDependencies ++= Seq(
