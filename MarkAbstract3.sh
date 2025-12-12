@@ -1,5 +1,9 @@
 #!/bin/bash
 
+#export PATH="$JAVA_HOME_25/bin:$PATH"
+
+java -version
+
 if [ "$#" -lt "4" ]
   then
     echo 'MarkAbstract shell takes a list of xml documents and add to them the'
@@ -30,7 +34,7 @@ echo "outDir=$4"
 echo "$5"
 echo
 
-time java  -Xms1g -Xmx12g -cp target/scala-2.13/MarkAbstract-assembly-2.0.0.jar:lib/DeCSHighlighter-assembly-0.1.jar org.bireme.ma.MarkAbstract $1 $2 $3 $4 $5 $6 &>logs/MarkAbstract_$NOW.log
+time java  -Xms1g -Xmx12g -cp target/scala-3.3.7/MarkAbstract-assembly-2.0.0.jar:lib/DeCSHighlighter-assembly-0.1.jar org.bireme.ma.MarkAbstract $1 $2 $3 $4 $5 $6 &>logs/MarkAbstract_$NOW.log
 MA="$?"
 
 if [ $MA -ne 0 ]; then

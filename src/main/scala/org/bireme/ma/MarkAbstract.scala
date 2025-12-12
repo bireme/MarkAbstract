@@ -24,7 +24,7 @@ import scala.util.matching.Regex.Match
   * <mark_ab_*> where every occurrence of the text xxx: yyy of the field <ab> or
   * <ab_*> is replaced by <h2>xxx</h2>: yyy. Objective:xxx Conclusions:yyy
   */
-object MarkAbstract extends App {
+object MarkAbstract {
   private def usage(): Unit = {
     Console.err.println("usage: MarkAbstract")
     Console.err.println("\t\t<prefixFile> - file having some words allowed in the abstract tag. For ex, 'Results':")
@@ -38,36 +38,38 @@ object MarkAbstract extends App {
     System.exit(1)
   }
 
-  if (args.length < 4) usage()
+  def main(args: Array[String]): Unit = {
+    if (args.length < 4) usage()
 
-  private val parameters: Map[String, String] = args.drop(4).foldLeft[Map[String, String]](Map()) {
-    case (map, par) =>
-      val split = par.split(" *= *", 2)
-      if (split.size == 1) map + ((split(0).substring(2), ""))
-      else map + ((split(0).substring(1), split(1)))
-  }
-  private val prefixFile: String = args(0)
-  private val inDir: String = args(1)
-  private val xmlFileRegexp: String = args(2)
-  private val outDir: String = args(3)
+    val parameters: Map[String, String] = args.drop(4).foldLeft[Map[String, String]](Map()) {
+      case (map, par) =>
+        val split = par.split(" *= *", 2)
+        if (split.size == 1) map + ((split(0).substring(2), ""))
+        else map + ((split(0).substring(1), split(1)))
+    }
+    val prefixFile: String = args(0)
+    val inDir: String = args(1)
+    val xmlFileRegexp: String = args(2)
+    val outDir: String = args(3)
 
-  private val days: Option[Int] = parameters.get("days").map(_.toInt)
-  private val deCSPath: Option[String] = parameters.get("deCSPath")
-  private val useTempDirs: Boolean = parameters.contains("useTempDirs")
+    val days: Option[Int] = parameters.get("days").map(_.toInt)
+    val deCSPath: Option[String] = parameters.get("deCSPath")
+    val useTempDirs: Boolean = parameters.contains("useTempDirs")
 
-  private val mabs: MarkAbstract = new MarkAbstract(prefixFile, deCSPath)
-  private val startTime: Long = new GregorianCalendar().getTimeInMillis
-  private val result: Try[Unit] = process(inDir, xmlFileRegexp, outDir, useTempDirs, days, mabs)
+    val mabs: MarkAbstract = new MarkAbstract(prefixFile, deCSPath)
+    val startTime: Long = new GregorianCalendar().getTimeInMillis
+    val result: Try[Unit] = process(inDir, xmlFileRegexp, outDir, useTempDirs, days, mabs)
 
-  private val endTime: Long = new GregorianCalendar().getTimeInMillis
-  private val difTime: Long = (endTime - startTime) / 1000
-  println("\nElapsed time: " + difTime + "s")
+    val endTime: Long = new GregorianCalendar().getTimeInMillis
+    val difTime: Long = (endTime - startTime) / 1000
+    println("\nElapsed time: " + difTime + "s")
 
-  result match {
-    case Success(_) => System.exit(0)
-    case Failure(exception) =>
-      exception.printStackTrace()
-      System.exit(1)
+    result match {
+      case Success(_) => System.exit(0)
+      case Failure(exception) =>
+        exception.printStackTrace()
+        System.exit(1)
+    }
   }
 
   private def createTmpDir(prefix: String): Try[Path] = {
@@ -426,7 +428,7 @@ class MarkAbstract(prefixFile: String,
                                   scanGeographics = true)
         val (_, seq, _) = highlighter.get.highlight("", "", text, conf)
         val (marked: String, tend: Int) = seq.foldLeft[(String, Int)]("", 0) {
-          case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String, _, _)) =>
+          case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String, _, _, _)) =>
             val prefix = s"""&lt;a class="decs" id="$id"&gt;"""
             //val prefix = s"""<a class="decs" id="$id">"""
             val s = str + text.substring(lpos, termBegin) + prefix + text.substring(termBegin, termEnd + 1) + suffix
