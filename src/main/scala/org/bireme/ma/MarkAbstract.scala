@@ -460,7 +460,7 @@ class MarkAbstract(prefixFile: String,
   }
 
   /**
-    * Converts all input charactes into a-z, 0-9, '-' and spaces
+    * Converts all input characters into a-z, 0-9, '-' and spaces
     *
     * @param in input string to be converted
     * @return the converted string
