@@ -1,6 +1,11 @@
 #!/bin/bash
 
-#export PATH="$JAVA_HOME_25/bin:$PATH"
+if [ -z "$JAVA_HOME_25" ]; then
+  echo "variável de ambiente JAVA_HOME_25 não definida"
+  exit 1
+fi
+
+PATH=$JAVA_HOME_25/bin:$PATH
 
 java -version
 
@@ -34,7 +39,7 @@ echo "outDir=$4"
 echo "$5"
 echo
 
-time java  -Xms1g -Xmx12g -cp target/scala-3.3.7/MarkAbstract-assembly-2.0.0.jar:lib/DeCSHighlighter-assembly-0.1.jar org.bireme.ma.MarkAbstract $1 $2 $3 $4 $5 $6 &>logs/MarkAbstract_$NOW.log
+time java  -Xms1g -Xmx12g -cp target/scala-3.3.7/MarkAbstract-assembly-2.0.0.jar:lib/decshighlighter_3-0.1.jar org.bireme.ma.MarkAbstract $1 $2 $3 $4 $5 $6 &>logs/MarkAbstract_$NOW.log
 MA="$?"
 
 if [ $MA -ne 0 ]; then
