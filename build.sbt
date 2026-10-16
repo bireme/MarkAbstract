@@ -1,6 +1,6 @@
 lazy val commonSettings = Seq(
   organization := "br.bireme",
-  version := "2.15.0",
+  version := "2.16.0",
   scalaVersion := "3.3.7" //"2.13.16"
 )
 
@@ -14,6 +14,7 @@ lazy val root = (project in file(".")).
 val jakartaServletApiVersion = "6.1.0"
 val luceneVersion = "10.3.2" //"9.12.1" //"9.5.0" //"8.11.1" //"9.1.0" //"8.8.2" //"8.6.3"
 val scalaTestVersion = "3.3.0-SNAP4" //"3.3.0-SNAP2"
+val oxVersion = "1.0.9"
 
 libraryDependencies ++= Seq(
   //"javax.servlet" % "javax.servlet-api" % servletApiVersion % "provided",
@@ -23,6 +24,7 @@ libraryDependencies ++= Seq(
   //"org.apache.lucene" % "lucene-analysis-common" % luceneVersion,
   "org.apache.lucene" % "lucene-queryparser" % luceneVersion,
   "org.apache.lucene" % "lucene-backward-codecs" % luceneVersion,
+  "com.softwaremill.ox" %% "core" % oxVersion,
   "org.scalactic" %% "scalactic" % scalaTestVersion,
   "org.scalatest" %% "scalatest" % scalaTestVersion % "test"
 )

@@ -5,13 +5,15 @@
 
 package org.bireme.ma
 
-import java.io.{BufferedWriter, File, IOException, InputStreamReader, OutputStreamWriter}
+import java.io.{BufferedWriter, File, IOException, InputStreamReader, OutputStreamWriter, StringWriter, Writer}
 import java.nio.charset.{Charset, CodingErrorAction, StandardCharsets}
 import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import java.text.Normalizer
 import java.text.Normalizer.Form
 import java.util.{Calendar, Comparator, GregorianCalendar, TimeZone}
 import org.bireme.dh.{Config, Highlighter}
+import ox.channels.ChannelClosedException
+import ox.flow.Flow
 
 import scala.collection.immutable.HashSet
 import scala.collection.mutable.ArrayBuffer
@@ -26,6 +28,9 @@ import scala.util.matching.Regex.Match
   * <ab_*> is replaced by <h2>xxx</h2>: yyy. Objective:xxx Conclusions:yyy
   */
 object MarkAbstract {
+  /** Number of processors - 1 (leaves one processor to read and write the files), at least 1 */
+  def defaultThreads: Int = math.max(1, Runtime.getRuntime.availableProcessors() - 1)
+
   private def usage(): Unit = {
     Console.err.println("usage: MarkAbstract")
     Console.err.println("\t\t<prefixFile> - file having some words allowed in the abstract tag. For ex, 'Results':")
@@ -37,6 +42,7 @@ object MarkAbstract {
     Console.err.println("\t\t[-deCSPath=<path>] - Path to the Decs' Lucene index. if present, mark DeCS descriptors and synonyms in the abstract")
     Console.err.println("\t\t[--useTempDirs] - if present will use temporary directories for Docker performance")
     Console.err.println("\t\t[--checkXml] - if present checks if each input file is a well formed xml before marking it")
+    Console.err.println("\t\t[-threads=<n>] - number of documents marked in parallel. Default: number of processors - 1")
     System.exit(1)
   }
 
@@ -57,8 +63,9 @@ object MarkAbstract {
     val deCSPath: Option[String] = parameters.get("deCSPath")
     val useTempDirs: Boolean = parameters.contains("useTempDirs")
     val checkXml: Boolean = parameters.contains("checkXml")
+    val threads: Int = parameters.get("threads").map(_.toInt).getOrElse(defaultThreads)
 
-    val mabs: MarkAbstract = new MarkAbstract(prefixFile, deCSPath)
+    val mabs: MarkAbstract = new MarkAbstract(prefixFile, deCSPath, threads)
     val startTime: Long = new GregorianCalendar().getTimeInMillis
     val result: Try[Unit] = process(inDir, xmlFileRegexp, outDir, useTempDirs, days, checkXml, mabs)
 
@@ -157,9 +164,12 @@ object MarkAbstract {
   *
   * @param prefixFile file having some words allowed in the abstract tag. For ex, 'Results':
   * @param deCSPath path to the DeCS lucene index path
+  * @param threads number of documents marked in parallel. Default: number of processors - 1 (at least 1)
   */
 class MarkAbstract(prefixFile: String,
-                   deCSPath: Option[String]) {
+                   deCSPath: Option[String],
+                   threads: Int = MarkAbstract.defaultThreads) {
+  require (threads > 0, s"threads must be positive: $threads")
 
   private  val highlighter: Option[Highlighter] = deCSPath.map(new Highlighter(_))
 
@@ -170,12 +180,27 @@ class MarkAbstract(prefixFile: String,
   private val headerRegex: Regex =
     "^<\\?xml\\s+version\\s*=\\s*[\"']1\\.\\d[\"']\\s+encoding\\s*=\\s*[\"']([^\"']+)[\"']".r
   private val utf8BomAsIso: String = "\u00EF\u00BB\u00BF"   // UTF-8 BOM bytes read as iso-8859-1
+  private val fmtTagRegex: Regex = "&lt;/?\\s*([^\\s>]+?)\\s*&gt;".r
+
+  // DeCS highlighter configurations, created once for each scanned language (None = all languages)
+  private val scanLangs: Set[String] = Set("en", "es", "pt", "fr")
+  private val decsConfigs: Map[Option[String], Config] =
+    (None +: scanLangs.toSeq.map(Some(_))).map {
+      scanLang => scanLang -> Config(scanLang, outLang = None, scanMainHeadings = true, scanEntryTerms = true,
+                                     scanQualifiers = true, scanPublicationTypes = true, scanCheckTags = true,
+                                     scanGeographics = true)
+    }.toMap
 
   // Limits of what is kept in memory from a <doc> or from an abstract field. They protect against
   // huge documents or files without the closing tags, which would otherwise be read entirely.
   private val maxDocChars: Long = 10L * 1024 * 1024
   private val maxDocLines: Int = 100000
   private val maxFieldChars: Long = 10L * 1024 * 1024
+
+  // Documents are marked in parallel in batches of about this size (chars). Small batches keep all
+  // threads busy even in small files; bigger ones would leave threads idle at the end of the file.
+  private val batchChars: Long = 64L * 1024
+  private val lineSeparator: String = System.lineSeparator()
 
   private val htmlFmtSet: Set[String] = Set(
       "acronym", "abbr", "address", "b", "bdi", "bdo", "big", "blockquote",
@@ -363,12 +388,25 @@ class MarkAbstract(prefixFile: String,
   }
 
   /**
+    * A complete <doc> (or a single line outside of a <doc>) held in memory
+    * @param lines the document lines
+    * @param lang the document language (field <la>)
+    * @param chars the number of chars of the document
+    */
+  private case class Doc(lines: ArrayBuffer[String],
+                         lang: Option[String],
+                         chars: Long)
+
+  /**
     * Copy the xml field into the destination file if it is not of kind abstract,
     * if it is, then call the function that will mark and save it.
     * Each <doc> is buffered so that its language (field <la>) is known before its
     * abstracts are marked, wherever the <la> field appears inside the document.
-    * If the <doc> exceeds maxDocChars or maxDocLines, the buffered lines are processed with
-    * the language found so far and the rest of the document is processed line by line.
+    * The buffered documents are grouped in batches that are marked in parallel (Ox flow) and
+    * written in their original order.
+    * If a <doc> exceeds maxDocChars or maxDocLines, the parallel flow is finished, the buffered
+    * lines are processed with the language found so far, the rest of the document is processed
+    * line by line and then a new parallel flow processes the following documents.
     *
     * @param fname the processed file name
     * @param lines the lines of the input xml file
@@ -376,53 +414,136 @@ class MarkAbstract(prefixFile: String,
     */
   private def processOtherFields(fname: String,
                                  lines: Iterator[String],
-                                 dest: BufferedWriter): Unit = {
+                                 dest: Writer): Unit = {
     require (lines != null)
     require (dest != null)
 
-    var cur: Int = 0
+    var cur: Int = 0                                // number of abstracts already written
+    var oversized: Option[Doc] = None               // partial <doc> bigger than the memory limit
 
-    def processLines(docLines: Iterator[String],
-                     lang: Option[String]): Unit = {
-      while (docLines.hasNext) {
-        val line = docLines.next()  // not trimmed, so the original indentation is kept
-        if (line.trim.startsWith("<field name=\"ab")) {
-          val lang1: Option[String] = abLangRegex.findFirstMatchIn(line).map(mat => mat.group(1).toLowerCase).
-            orElse(lang).orElse(Some("en"))
-          if (cur % 10000 == 0) println(s"+++$cur")
-          cur += 1
-          processAbField(fname, lang1, line, docLines, dest)
-        } else {
-          dest.write(line)
-          dest.newLine()
+    def progress(abstracts: Int): Unit = {
+      (cur until cur + abstracts).filter(_ % 10000 == 0).foreach(pos => println(s"+++$pos"))
+      cur += abstracts
+    }
+
+    // Reads the next documents and stops before an oversized one, which is left in 'oversized'.
+    // It is consumed only by the flow source, and 'oversized' is read only after the flow is finished.
+    def docs: Iterator[Doc] = new Iterator[Doc] {
+      private var nextDoc: Option[Doc] = None
+
+      override def hasNext: Boolean = {
+        if (nextDoc.isEmpty && oversized.isEmpty && lines.hasNext) {
+          readDoc(lines) match {
+            case Right(doc) => nextDoc = Some(doc)
+            case Left(partial) => oversized = Some(partial)
+          }
         }
+        nextDoc.nonEmpty
+      }
+
+      override def next(): Doc = {
+        if (!hasNext) throw new NoSuchElementException()
+        val doc: Doc = nextDoc.get
+        nextDoc = None
+        doc
       }
     }
 
-    while (lines.hasNext) {
-      val line = lines.next()
-      val lineT = line.trim
-      if ((lineT.startsWith("<doc>") || lineT.startsWith("<doc ")) && !lineT.contains("</doc>")) {
-        val docLines = ArrayBuffer[String](line)
-        var docChars: Long = line.length
+    var finished: Boolean = false
+    while (!finished) {
+      try {
+        Flow.fromIterator(docs)
+          .groupedWeighted(batchChars)(_.chars)
+          .mapPar(threads)(batch => processBatch(fname, batch))
+          .runForeach {
+            case (text, abstracts) =>
+              dest.write(text)
+              progress(abstracts)
+          }
+      } catch {   // reports the original error instead of the Ox channel wrapper
+        case ex: ChannelClosedException.Error if ex.getCause != null => throw ex.getCause
+      }
 
-        while (!docLines.last.contains("</doc>") && lines.hasNext &&
-               (docChars <= maxDocChars) && (docLines.length <= maxDocLines)) {
-          val next: String = lines.next()
-          docLines += next
-          docChars += next.length
-        }
-        val lang: Option[String] = docLines.iterator.flatMap(laRegex.findFirstMatchIn).nextOption()
-          .map(_.group(1).toLowerCase)
-
-        if (docLines.last.contains("</doc>") || !lines.hasNext) processLines(docLines.iterator, lang)
-        else {
+      oversized match {
+        case Some(partial) =>
+          oversized = None
           println(s"WARNING: [$fname] <doc> bigger than the memory limit ($maxDocChars chars or $maxDocLines lines)" +
-            s" or without </doc> - processing the rest of it line by line with language ${lang.getOrElse("default")}")
-          processLines(docLines.iterator ++ untilDocEnd(lines), lang)
-        }
-      } else processLines(Iterator.single(line), None)
+            s" or without </doc> - processing the rest of it line by line with language " +
+            partial.lang.getOrElse("default"))
+          progress(processLines(fname, partial.lines.iterator ++ untilDocEnd(lines), partial.lang, dest))
+        case None => finished = true
+      }
     }
+  }
+
+  /**
+    * Reads the next document (lines from <doc> up to </doc>), or a single line if it is outside a document
+    * @param lines the lines of the input xml file
+    * @return Right(document) or Left(partial document) if it is bigger than maxDocChars or maxDocLines
+    */
+  private def readDoc(lines: Iterator[String]): Either[Doc, Doc] = {
+    val line: String = lines.next()
+
+    if ((startsWithIgnoringIndent(line, "<doc>") || startsWithIgnoringIndent(line, "<doc ")) &&
+        !line.contains("</doc>")) {
+      val docLines = ArrayBuffer[String](line)
+      var docChars: Long = line.length
+
+      while (!docLines.last.contains("</doc>") && lines.hasNext &&
+             (docChars <= maxDocChars) && (docLines.length <= maxDocLines)) {
+        val next: String = lines.next()
+        docLines += next
+        docChars += next.length
+      }
+      val lang: Option[String] = docLines.iterator.flatMap(laRegex.findFirstMatchIn).nextOption()
+        .map(_.group(1).toLowerCase)
+      val doc: Doc = Doc(docLines, lang, docChars)
+
+      if (docLines.last.contains("</doc>") || !lines.hasNext) Right(doc) else Left(doc)
+    } else Right(Doc(ArrayBuffer(line), None, line.length))
+  }
+
+  /**
+    * Marks a batch of documents. Runs in parallel with other batches.
+    * @param fname the processed file name
+    * @param batch the documents to be marked
+    * @return (the marked text of the documents, number of abstracts)
+    */
+  private def processBatch(fname: String,
+                           batch: Seq[Doc]): (String, Int) = {
+    val writer = new StringWriter(batch.map(_.chars).sum.toInt + 1024)
+    val abstracts: Int = batch.map(doc => processLines(fname, doc.lines.iterator, doc.lang, writer)).sum
+
+    (writer.toString, abstracts)
+  }
+
+  /**
+    * Copies the lines into the destination, marking the abstract fields
+    * @param fname the processed file name
+    * @param docLines the lines of a document
+    * @param lang the document language
+    * @param dest the destination of the lines
+    * @return the number of abstracts found
+    */
+  private def processLines(fname: String,
+                           docLines: Iterator[String],
+                           lang: Option[String],
+                           dest: Writer): Int = {
+    var abstracts: Int = 0
+
+    while (docLines.hasNext) {
+      val line = docLines.next()  // not trimmed, so the original indentation is kept
+      if (startsWithIgnoringIndent(line, "<field name=\"ab")) {
+        val lang1: Option[String] = abLangRegex.findFirstMatchIn(line).map(mat => mat.group(1).toLowerCase).
+          orElse(lang).orElse(Some("en"))
+        abstracts += 1
+        processAbField(fname, lang1, line, docLines, dest)
+      } else {
+        dest.write(line)
+        dest.write(lineSeparator)
+      }
+    }
+    abstracts
   }
 
   /**
@@ -454,7 +575,7 @@ class MarkAbstract(prefixFile: String,
                              lang: Option[String],
                              openLine: String,
                              lines: Iterator[String],
-                             dest: BufferedWriter): Unit = {
+                             dest: Writer): Unit = {
     require (fname != null)
     require (openLine != null)
     require (lines != null)
@@ -471,17 +592,17 @@ class MarkAbstract(prefixFile: String,
 
         // the mark field is written right after the abstract field, before any following content
         dest.write(field.substring(0, mat.end))
-        dest.newLine()
+        dest.write(lineSeparator)
         dest.write(prefix + "<field name=\"mark_" + mat.group(2) + "\">" + marked + "</field>")
-        dest.newLine()
+        dest.write(lineSeparator)
         if (rest.trim.nonEmpty) {
           dest.write(rest)
-          dest.newLine()
+          dest.write(lineSeparator)
         }
       case None =>
         println(s"WARNING: [$fname] mark field not created - unexpected abstract format: ${field.take(100)}")
         dest.write(field)
-        dest.newLine()
+        dest.write(lineSeparator)
     }
   }
 
@@ -533,30 +654,30 @@ class MarkAbstract(prefixFile: String,
     */
   private def markDeCSDescriptors(text: String,
                                   lang: Option[String]): String = {
-    if (highlighter.nonEmpty) {
-      Try {
-        val suffix = "&lt;/a&gt;"
-        val scanLang: Option[String] = lang.flatMap(str => Some(str).filter(Set("en", "es", "pt", "fr").contains))
-        //val conf: Config = Config(scanLang, None, None, scanDescriptors = true, scanSynonyms = true, onlyPreCod = false)
-        val conf: Config = Config(scanLang, outLang = None, scanMainHeadings = true, scanEntryTerms = true,
-                                  scanQualifiers = true, scanPublicationTypes = true, scanCheckTags= true,
-                                  scanGeographics = true)
-        val (_, seq, _) = highlighter.get.highlight("", "", text, conf)
-        val (marked: String, tend: Int) = seq.foldLeft[(String, Int)]("", 0) {
-          case ((str: String, lpos: Int), (termBegin: Int, termEnd: Int, id: String, _, _, _)) =>
-            val prefix = s"""&lt;a class="decs" id="$id"&gt;"""
-            //val prefix = s"""<a class="decs" id="$id">"""
-            val s = str + text.substring(lpos, termBegin) + prefix + text.substring(termBegin, termEnd + 1) + suffix
-            (s, termEnd + 1)
+    highlighter match {
+      case Some(hl) =>
+        Try {
+          val conf: Config = decsConfigs(lang.filter(scanLangs.contains))
+          val (_, seq, _) = hl.highlight("", "", text, conf)
+          val builder = new java.lang.StringBuilder(text.length + 48 * seq.size)
+          val tend: Int = seq.foldLeft(0) {
+            case (lpos, (termBegin: Int, termEnd: Int, id: String, _, _, _)) =>
+              builder.append(text, lpos, termBegin)
+                     .append("&lt;a class=\"decs\" id=\"").append(id).append("\"&gt;")
+                     .append(text, termBegin, termEnd + 1)
+                     .append("&lt;/a&gt;")
+              termEnd + 1
+          }
+          if (tend < text.length) builder.append(text, tend, text.length)
+          builder.toString
+        } match {
+          case Success(v) => v
+          case Failure(exception) =>
+            Console.err.println(s"DeCS marking failed, keeping the text unmarked - ${exception.toString}")
+            text
         }
-        if (tend >= text.length) marked else marked + text.substring(tend)
-      } match {
-        case Success(v) => v
-        case Failure(exception) =>
-          Console.err.println(s"DeCS marking failed, keeping the text unmarked - ${exception.toString}")
-          text
-      }
-    } else text
+      case None => text
+    }
   }
 
   /**
@@ -606,13 +727,21 @@ class MarkAbstract(prefixFile: String,
     * @return the input string with html marks removed
     */
   private def removeFmtHtmlMarks(str: String): String = {
-    val regex1 = "&lt;/?\\s*([^\\s>]+?)\\s*&gt;".r
-
     def replace(mat: Match): Option[String] =
       if (htmlFmtSet.contains(mat.group(1).toLowerCase)) Some("")
       else None
 
     require (str != null)
-    regex1.replaceSomeIn(str, replace)
+    fmtTagRegex.replaceSomeIn(str, replace)
+  }
+
+  /**
+    * Same as line.trim.startsWith(prefix), but without creating a trimmed copy of the line
+    */
+  private def startsWithIgnoringIndent(line: String,
+                                       prefix: String): Boolean = {
+    var start: Int = 0
+    while (start < line.length && line.charAt(start) <= ' ') start += 1
+    line.startsWith(prefix, start)
   }
 }
