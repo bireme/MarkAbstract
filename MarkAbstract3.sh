@@ -1,8 +1,7 @@
 #!/bin/bash
 
 if [ -z "$JAVA_HOME_25" ]; then
-  echo "variável de ambiente JAVA_HOME_25 não definida"
-  exit 1
+  JAVA_HOME_25="/home/users/operacao/.cache/coursier/arc/https/github.com/graalvm/graalvm-ce-builds/releases/download/jdk-25.0.1/graalvm-community-jdk-25.0.1_linux-x64_bin.tar.gz/graalvm-community-openjdk-25.0.1+8.1"
 fi
 
 PATH=$JAVA_HOME_25/bin:$PATH
@@ -39,7 +38,10 @@ echo "outDir=$4"
 echo "$5"
 echo
 
-time java  -Xms1g -Xmx12g -cp target/scala-3.3.7/MarkAbstract-assembly-2.0.0.jar:lib/decshighlighter_3-0.1.jar org.bireme.ma.MarkAbstract $1 $2 $3 $4 $5 $6 &>logs/MarkAbstract_$NOW.log
+#export JAVA_TOOL_OPTIONS="-Djdk.xml.totalEntitySizeLimit=10000000 -Djdk.xml.maxGeneralEntitySizeLimit=10000000"
+export JAVA_TOOL_OPTIONS="-Djdk.xml.totalEntitySizeLimit=300000 -Djdk.xml.maxGeneralEntitySizeLimit=300000"
+
+time java  -Xms1g -Xmx12g -cp target/scala-3.3.7/MarkAbstract-assembly-2.15.0.jar:lib/decshighlighter_3-0.1.jar org.bireme.ma.MarkAbstract $1 $2 $3 $4 $5 $6 &>logs/MarkAbstract_$NOW.log
 MA="$?"
 
 if [ $MA -ne 0 ]; then
@@ -57,4 +59,3 @@ fi
 cd -
 
 exit 0
-
