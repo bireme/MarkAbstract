@@ -46,14 +46,22 @@ object MarkAbstract {
     System.exit(1)
   }
 
-  def main(args: Array[String]): Unit = {
-    if (args.length < 4) usage()
-
-    val parameters: Map[String, String] = args.drop(4).foldLeft[Map[String, String]](Map()) {
+  /**
+    * @param args the optional command line parameters (after the 4 mandatory ones), ex: -days=3, --useTempDirs
+    * @return map of parameter name (without '-' or '--') -> value ("" if it has no value)
+    */
+  private[ma] def parseParameters(args: Seq[String]): Map[String, String] = {
+    args.foldLeft[Map[String, String]](Map()) {
       case (map, par) =>
         val split = par.dropWhile(_ == '-').split(" *= *", 2)
         map + ((split(0), if (split.length == 1) "" else split(1)))
     }
+  }
+
+  def main(args: Array[String]): Unit = {
+    if (args.length < 4) usage()
+
+    val parameters: Map[String, String] = parseParameters(args.toSeq.drop(4))
     val prefixFile: String = args(0)
     val inDir: String = args(1)
     val xmlFileRegexp: String = args(2)
@@ -81,8 +89,9 @@ object MarkAbstract {
     }
   }
 
-  private def createTmpDir(prefix: String): Try[Path] = {
-    Try (Files.createTempDirectory(Files.createDirectories(Paths.get("tmp")), prefix))
+  private def createTmpDir(tmpBase: Path,
+                           prefix: String): Try[Path] = {
+    Try (Files.createTempDirectory(Files.createDirectories(tmpBase), prefix))
   }
   private def delTmpDir(tmpDir: Path): Try[Unit] = {
     Try {
@@ -128,17 +137,18 @@ object MarkAbstract {
     }
   }
 
-  private def process(inDir: String,
-                      xmlFileRegexp: String,
-                      outDir: String,
-                      useTempDirs: Boolean,
-                      days: Option[Int],
-                      checkXml: Boolean,
-                      mabs: MarkAbstract): Try[Unit] = {
+  private[ma] def process(inDir: String,
+                          xmlFileRegexp: String,
+                          outDir: String,
+                          useTempDirs: Boolean,
+                          days: Option[Int],
+                          checkXml: Boolean,
+                          mabs: MarkAbstract,
+                          tmpBase: Path = Paths.get("tmp")): Try[Unit] = {
     if (useTempDirs) {
-      createTmpDir("in").flatMap {
+      createTmpDir(tmpBase, "in").flatMap {
         inTmpDir =>
-          val result: Try[Unit] = createTmpDir("out").flatMap {
+          val result: Try[Unit] = createTmpDir(tmpBase, "out").flatMap {
             outTmpDir =>
               val res: Try[Unit] = copyFilesToDir(Paths.get(inDir), Some(xmlFileRegexp), inTmpDir).flatMap {
                 _ =>

@@ -1,6 +1,6 @@
 lazy val commonSettings = Seq(
   organization := "br.bireme",
-  version := "2.16.1",
+  version := "2.16.2",
   scalaVersion := "3.3.7" //"2.13.16"
 )
 
@@ -30,6 +30,9 @@ libraryDependencies ++= Seq(
 )
 
 Test / logBuffered := false
+// Tests run in a separate JVM: the DeCS index needs more memory than sbt's own JVM has
+Test / fork := true
+Test / javaOptions ++= Seq("-Xmx3g")
 trapExit :=  false  // To allow System.exit() without an exception (TestIndex.scala)
 
 scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature")

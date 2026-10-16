@@ -41,7 +41,7 @@ echo
 #export JAVA_TOOL_OPTIONS="-Djdk.xml.totalEntitySizeLimit=10000000 -Djdk.xml.maxGeneralEntitySizeLimit=10000000"
 export JAVA_TOOL_OPTIONS="-Djdk.xml.totalEntitySizeLimit=300000 -Djdk.xml.maxGeneralEntitySizeLimit=300000"
 
-time java  -Xms1g -Xmx12g -cp target/scala-3.3.7/MarkAbstract-assembly-2.16.1.jar:lib/decshighlighter_3-0.1.jar org.bireme.ma.MarkAbstract $1 $2 $3 $4 $5 $6 &>logs/MarkAbstract_$NOW.log
+time java  -Xms1g -Xmx12g -cp target/scala-3.3.7/MarkAbstract-assembly-2.16.2.jar:lib/decshighlighter_3-0.1.jar org.bireme.ma.MarkAbstract $1 $2 $3 $4 $5 $6 &>logs/MarkAbstract_$NOW.log
 MA="$?"
 
 if [ $MA -ne 0 ]; then
