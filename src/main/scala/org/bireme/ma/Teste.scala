@@ -9,6 +9,11 @@ import org.apache.lucene.store.{FSDirectory, MMapDirectory}
 import java.nio.file.Paths
 
 object Teste {
+  /**
+    * Runs a small Lucene lookup check against the local DeCS index.
+    *
+    * @param args command-line arguments; currently unused
+    */
   def main(args: Array[String]): Unit = {
     val analyzer: StandardAnalyzer = new StandardAnalyzer()
     val indexPath = Paths.get("decs/decs")

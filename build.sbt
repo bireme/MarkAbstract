@@ -25,6 +25,7 @@ libraryDependencies ++= Seq(
   "org.apache.lucene" % "lucene-queryparser" % luceneVersion,
   "org.apache.lucene" % "lucene-backward-codecs" % luceneVersion,
   "com.softwaremill.ox" %% "core" % oxVersion,
+  "com.typesafe.play" %% "play-json" % "2.10.8",
   "org.scalactic" %% "scalactic" % scalaTestVersion,
   "org.scalatest" %% "scalatest" % scalaTestVersion % "test"
 )

@@ -21,20 +21,48 @@ import scala.util.{Failure, Success, Try}
 class SimpleErrorHandler extends ErrorHandler {
   private val warnings: ArrayBuffer[String] = ArrayBuffer()
 
+  /**
+    * Formats a parser diagnostic with its source line number.
+    *
+    * @param e parser diagnostic to format
+    * @return diagnostic text prefixed by the line number
+    */
   private def format(e: SAXParseException): String = s"line ${e.getLineNumber}: ${e.getMessage}"
 
+  /**
+    * Records a non-fatal parser warning.
+    *
+    * @param e parser warning to record
+    */
   def warning(e: SAXParseException): Unit = {
     warnings += format(e)
   }
 
+  /**
+    * Stops parsing when the parser reports an XML error.
+    *
+    * @param e parser error to rethrow with formatted diagnostic text
+    * @throws SAXParseException always, with the formatted error message
+    */
   def error(e: SAXParseException): Unit = {
     throw new SAXParseException(format(e), null, e)
   }
 
+  /**
+    * Stops parsing when the parser reports a fatal XML error.
+    *
+    * @param e fatal parser error to rethrow with formatted diagnostic text
+    * @throws SAXParseException always, with the formatted error message
+    */
   def fatalError(e: SAXParseException): Unit = {
     throw new SAXParseException(format(e), null, e)
   }
 
+  /**
+    * Returns the warnings collected during parsing.
+    *
+    * @return immutable sequence of formatted warning messages
+    */
   def getWarnings: Seq[String] = warnings.toSeq
 }
 
@@ -73,12 +101,18 @@ class CheckXml {
 }
 
 object CheckXml {
+  /** Prints the command-line usage information and exits with a failure status. */
   private def usage(): Unit = {
     Console.err.println("usage: CheckXml <filename>")
     System.exit(1)
   }
 
   // 'extends App' does not work in Scala 3 ('args' is null), so main is explicit
+  /**
+    * Validates the XML file named by the command-line argument and prints the result.
+    *
+    * @param args exactly one XML file path
+    */
   def main(args: Array[String]): Unit = {
     if (args.length != 1) usage()
 

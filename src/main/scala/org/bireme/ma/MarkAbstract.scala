@@ -6,14 +6,18 @@
 package org.bireme.ma
 
 import java.io.{BufferedWriter, File, IOException, InputStreamReader, OutputStreamWriter, StringWriter, Writer}
+import java.net.{URI, URLEncoder}
+import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.nio.charset.{Charset, CodingErrorAction, StandardCharsets}
 import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import java.text.Normalizer
 import java.text.Normalizer.Form
+import java.time.Duration
 import java.util.{Calendar, Comparator, GregorianCalendar, TimeZone}
 import org.bireme.dh.{Config, Highlighter}
 import ox.channels.ChannelClosedException
 import ox.flow.Flow
+import play.api.libs.json.Json
 
 import scala.collection.immutable.HashSet
 import scala.collection.mutable.ArrayBuffer
@@ -28,9 +32,14 @@ import scala.util.matching.Regex.Match
   * <ab_*> is replaced by <h2>xxx</h2>: yyy. Objective:xxx Conclusions:yyy
   */
 object MarkAbstract {
-  /** Number of processors - 1 (leaves one processor to read and write the files), at least 1 */
+  /**
+    * Calculates the default number of document-processing threads.
+    *
+    * @return the number of available processors minus one, with a minimum of one
+    */
   def defaultThreads: Int = math.max(1, Runtime.getRuntime.availableProcessors() - 1)
 
+  /** Prints the command-line usage information and exits with a failure status. */
   private def usage(): Unit = {
     Console.err.println("usage: MarkAbstract")
     Console.err.println("\t\t<prefixFile> - file having some words allowed in the abstract tag. For ex, 'Results':")
@@ -40,6 +49,7 @@ object MarkAbstract {
     Console.err.println("\t\t[-days=<days>] - if present only marks the files that were")
     Console.err.println("\t\tchanged in the last <days>. If absent it will mark all filtered files")
     Console.err.println("\t\t[-deCSPath=<path>] - Path to the Decs' Lucene index. if present, mark DeCS descriptors and synonyms in the abstract")
+    Console.err.println("\t\t[-deCSServer=<url>] - DeCSHighlighter service URL (cannot be used with -deCSPath)")
     Console.err.println("\t\t[--useTempDirs] - if present will use temporary directories for Docker performance")
     Console.err.println("\t\t[--checkXml] - if present checks if each input file is a well formed xml before marking it")
     Console.err.println("\t\t[-threads=<n>] - number of documents marked in parallel. Default: number of processors - 1")
@@ -58,6 +68,11 @@ object MarkAbstract {
     }
   }
 
+  /**
+    * Runs the command-line application using the supplied arguments.
+    *
+    * @param args positional paths and optional processing parameters
+    */
   def main(args: Array[String]): Unit = {
     if (args.length < 4) usage()
 
@@ -67,13 +82,15 @@ object MarkAbstract {
     val xmlFileRegexp: String = args(2)
     val outDir: String = args(3)
 
-    val days: Option[Int] = parameters.get("days").map(_.toInt)
     val deCSPath: Option[String] = parameters.get("deCSPath")
+    val deCSHighlighterUrl: Option[String] = parameters.get("deCSServer")
+    if (deCSPath.nonEmpty && deCSHighlighterUrl.nonEmpty) usage()
+    val days: Option[Int] = parameters.get("days").map(_.toInt)
     val useTempDirs: Boolean = parameters.contains("useTempDirs")
     val checkXml: Boolean = parameters.contains("checkXml")
     val threads: Int = parameters.get("threads").map(_.toInt).getOrElse(defaultThreads)
 
-    val mabs: MarkAbstract = new MarkAbstract(prefixFile, deCSPath, threads)
+    val mabs: MarkAbstract = new MarkAbstract(prefixFile, deCSPath, threads, deCSHighlighterUrl)
     val startTime: Long = new GregorianCalendar().getTimeInMillis
     val result: Try[Unit] = process(inDir, xmlFileRegexp, outDir, useTempDirs, days, checkXml, mabs)
 
@@ -89,10 +106,23 @@ object MarkAbstract {
     }
   }
 
+  /**
+    * Creates a temporary directory below the supplied base directory.
+    *
+    * @param tmpBase directory under which the temporary directory is created
+    * @param prefix prefix used for the temporary directory name
+    * @return the created directory path, or the creation failure
+    */
   private def createTmpDir(tmpBase: Path,
                            prefix: String): Try[Path] = {
     Try (Files.createTempDirectory(Files.createDirectories(tmpBase), prefix))
   }
+  /**
+    * Deletes a temporary directory and all of its contents.
+    *
+    * @param tmpDir directory tree to delete
+    * @return success if the tree was deleted, or the deletion failure
+    */
   private def delTmpDir(tmpDir: Path): Try[Unit] = {
     Try {
       Using.resource(Files.walk(tmpDir)) {
@@ -102,7 +132,10 @@ object MarkAbstract {
   }
 
   /**
-    * Deletes a temporary directory after the operation that used it, whatever its result
+    * Deletes a temporary directory after the operation that used it, whatever its result.
+    *
+    * @param result result of the operation that used the directory
+    * @param tmpDir temporary directory to delete
     * @return the operation result or, if it succeeded, the deletion result
     */
   private def deleteAfter(result: Try[Unit],
@@ -111,6 +144,15 @@ object MarkAbstract {
     deleted.failed.foreach(exception => println(s"Unable to delete temporary directory [$tmpDir] - $exception"))
     result.flatMap(_ => deleted)
   }
+  /**
+    * Copies files from one directory to another, optionally filtering by file name.
+    * Existing destination files are replaced.
+    *
+    * @param sourceDir directory containing the files to copy
+    * @param filter optional regular expression matched against each file name
+    * @param destinationDir directory receiving the copied files
+    * @return success if copying completes, or the first copy failure
+    */
   private def copyFilesToDir(sourceDir: Path,
                              filter: Option[String],
                              destinationDir: Path): Try[Unit] = {
@@ -137,6 +179,19 @@ object MarkAbstract {
     }
   }
 
+  /**
+    * Runs the marking process, optionally using temporary input and output directories.
+    *
+    * @param inDir directory containing source XML files
+    * @param xmlFileRegexp regular expression selecting source file names
+    * @param outDir directory receiving marked XML files
+    * @param useTempDirs whether to stage input and output in temporary directories
+    * @param days optional age filter, in days
+    * @param checkXml whether to validate each XML file before marking it
+    * @param mabs marker used to process the selected files
+    * @param tmpBase base directory for temporary directories
+    * @return success if processing completes, or a processing failure
+    */
   private[ma] def process(inDir: String,
                           xmlFileRegexp: String,
                           outDir: String,
@@ -175,13 +230,20 @@ object MarkAbstract {
   * @param prefixFile file having some words allowed in the abstract tag. For ex, 'Results':
   * @param deCSPath path to the DeCS lucene index path
   * @param threads number of documents marked in parallel. Default: number of processors - 1 (at least 1)
+  * @param deCSHighlighterUrl optional URL of the HighlightServlet, mutually exclusive with deCSPath
   */
 class MarkAbstract(prefixFile: String,
                    deCSPath: Option[String],
-                   threads: Int = MarkAbstract.defaultThreads) {
+                   threads: Int = MarkAbstract.defaultThreads,
+                   deCSHighlighterUrl: Option[String] = None) {
   require (threads > 0, s"threads must be positive: $threads")
+  require (deCSPath.isEmpty || deCSHighlighterUrl.isEmpty,
+    "deCSPath and deCSHighlighterUrl cannot both be defined")
 
   private  val highlighter: Option[Highlighter] = deCSPath.map(new Highlighter(_))
+  private val httpClient: Option[HttpClient] = deCSHighlighterUrl.map { _ =>
+    HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()
+  }
 
   private val regex: Regex = "(\\s*)<field name=\"(ab[^\"]{0,20})\">([^<]*?)</field>".r
   private val laRegex: Regex = "<field name=\"la\">([^<]{2})</field>".r
@@ -431,6 +493,10 @@ class MarkAbstract(prefixFile: String,
     var cur: Int = 0                                // number of abstracts already written
     var oversized: Option[Doc] = None               // partial <doc> bigger than the memory limit
 
+    /** Updates the abstract counter and prints progress at each ten-thousand mark.
+      *
+      * @param abstracts number of abstracts just processed
+      */
     def progress(abstracts: Int): Unit = {
       (cur until cur + abstracts).filter(_ % 10000 == 0).foreach(pos => println(s"+++$pos"))
       cur += abstracts
@@ -438,9 +504,18 @@ class MarkAbstract(prefixFile: String,
 
     // Reads the next documents and stops before an oversized one, which is left in 'oversized'.
     // It is consumed only by the flow source, and 'oversized' is read only after the flow is finished.
+    /** Supplies complete documents until the next document exceeds the buffering limits.
+      *
+      * @return iterator over buffered documents
+      */
     def docs: Iterator[Doc] = new Iterator[Doc] {
       private var nextDoc: Option[Doc] = None
 
+      /**
+        * Checks whether another complete document is available, buffering it if needed.
+        *
+        * @return true if another document can be returned
+        */
       override def hasNext: Boolean = {
         if (nextDoc.isEmpty && oversized.isEmpty && lines.hasNext) {
           readDoc(lines) match {
@@ -451,6 +526,12 @@ class MarkAbstract(prefixFile: String,
         nextDoc.nonEmpty
       }
 
+      /**
+        * Returns the next buffered document.
+        *
+        * @return next complete document
+        * @throws NoSuchElementException if no document remains
+        */
       override def next(): Doc = {
         if (!hasNext) throw new NoSuchElementException()
         val doc: Doc = nextDoc.get
@@ -563,8 +644,19 @@ class MarkAbstract(prefixFile: String,
   private def untilDocEnd(lines: Iterator[String]): Iterator[String] = new Iterator[String] {
     private var finished: Boolean = false
 
+    /**
+      * Reports whether another line can be read before the end of the document.
+      *
+      * @return true when another line is available and the closing tag was not reached
+      */
     override def hasNext: Boolean = !finished && lines.hasNext
 
+    /**
+      * Returns the next line and records whether it contains the document closing tag.
+      *
+      * @return next line through and including the document closing tag
+      * @throws NoSuchElementException if no line remains
+      */
     override def next(): String = {
       val line: String = lines.next()
       finished = line.contains("</doc>")
@@ -629,6 +721,13 @@ class MarkAbstract(prefixFile: String,
                            lang: Option[String]): String = {
     // Only a segment followed by ':' can end with a prefix. Segments that do not end with
     // a prefix keep their original separator (ex: "3:1", "http://")
+    /**
+      * Marks DeCS terms in a text segment and wraps a recognized heading prefix.
+      *
+      * @param split segment preceding a colon separator
+      * @param separator separator following the segment
+      * @return marked segment, including its separator when it is not a heading
+      */
     def markSegment(split: String,
                     separator: String): String = {
       val (str: String, seqPos: Seq[Int]) = org.bireme.dh.Tools.uniformString2(split)
@@ -664,6 +763,14 @@ class MarkAbstract(prefixFile: String,
     */
   private def markDeCSDescriptors(text: String,
                                   lang: Option[String]): String = {
+    if (deCSHighlighterUrl.nonEmpty) {
+      return Try(markDeCSWithServer(deCSHighlighterUrl.get, text, lang)) match {
+        case Success(marked) => marked
+        case Failure(exception) =>
+          Console.err.println("DeCS marking failed, keeping the text unmarked - " + exception.toString)
+          text
+      }
+    }
     highlighter match {
       case Some(hl) =>
         Try {
@@ -688,6 +795,48 @@ class MarkAbstract(prefixFile: String,
         }
       case None => text
     }
+  }
+
+  /**
+    * Calls the DeCSHighlighter servlet and inserts links using its returned positions.
+    *
+    * @param url complete URL of the HighlightServlet
+    * @param text text to mark
+    * @param lang optional language of the text
+    * @return text with escaped HTML links around the recognized terms
+    * @throws IOException if the server reports an error or returns invalid positions
+    */
+  private def markDeCSWithServer(url: String, text: String, lang: Option[String]): String = {
+    val fields = Seq("document" -> text, "showText" -> "false", "showPositions" -> "true",
+      "showDescriptors" -> "false", "showScores" -> "false") ++
+      lang.filter(scanLangs.contains).map("scanLang" -> _)
+    val form = fields.map { case (key, value) =>
+      URLEncoder.encode(key, StandardCharsets.UTF_8) + "=" + URLEncoder.encode(value, StandardCharsets.UTF_8)
+    }.mkString("&")
+    val request = HttpRequest.newBuilder(URI.create(url))
+      .timeout(Duration.ofSeconds(120))
+      .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+      .POST(HttpRequest.BodyPublishers.ofString(form, StandardCharsets.UTF_8))
+      .build()
+    val response = httpClient.get.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+    if (response.statusCode() / 100 != 2)
+      throw new IOException("DeCSHighlighter returned HTTP " + response.statusCode())
+
+    val positions = (Json.parse(response.body()) \ "positions").as[Seq[play.api.libs.json.JsObject]]
+    val builder = new java.lang.StringBuilder(text.length + 48 * positions.size)
+    var last = 0
+    positions.foreach { position =>
+      val begin = (position \ "begin").as[Int]
+      val end = (position \ "end").as[Int]
+      val id = (position \ "id").as[String]
+      if (begin < last || end < begin || end >= text.length)
+        throw new IOException("Invalid DeCSHighlighter position: " + begin + "-" + end)
+      builder.append(text, last, begin)
+        .append("&lt;a class=\"decs\" id=\"").append(id).append("\"&gt;")
+        .append(text, begin, end + 1).append("&lt;/a&gt;")
+      last = end + 1
+    }
+    builder.append(text, last, text.length).toString
   }
 
   /**
@@ -737,6 +886,12 @@ class MarkAbstract(prefixFile: String,
     * @return the input string with html marks removed
     */
   private def removeFmtHtmlMarks(str: String): String = {
+    /**
+      * Removes a formatting tag when its name is in the supported HTML tag set.
+      *
+      * @param mat match for an encoded HTML tag
+      * @return an empty replacement for a formatting tag, or None to keep the match
+      */
     def replace(mat: Match): Option[String] =
       if (htmlFmtSet.contains(mat.group(1).toLowerCase)) Some("")
       else None

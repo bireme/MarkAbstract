@@ -23,6 +23,7 @@ if [ "$#" -lt "4" ]
     echo '                    changed in the last <days>. If absent marks all filtered files.'
     echo '   [-deCSPath=<path>] - Path to the DeCS Isis database.'
     echo '                        If present, mark DeCS descriptors and synonyms in the abstract.'
+    echo '   [-deCSServer=<url>] - DeCSHighlighter service URL (cannot be used with -deCSPath).'
     exit 1
 fi
 
@@ -35,17 +36,19 @@ echo "prefixFile=$1"
 echo "inDir=$2"
 echo "xmlFileRegexp=$3"
 echo "outDir=$4"
-echo "$5"
+for arg in "${@:5}"; do
+  printf '%s\n' "$arg"
+done
 echo
 
 #export JAVA_TOOL_OPTIONS="-Djdk.xml.totalEntitySizeLimit=10000000 -Djdk.xml.maxGeneralEntitySizeLimit=10000000"
 export JAVA_TOOL_OPTIONS="-Djdk.xml.totalEntitySizeLimit=300000 -Djdk.xml.maxGeneralEntitySizeLimit=300000"
 
-time java  -Xms1g -Xmx12g -cp target/scala-3.3.7/MarkAbstract-assembly-2.16.2.jar:lib/decshighlighter_3-0.1.jar org.bireme.ma.MarkAbstract $1 $2 $3 $4 $5 $6 &>logs/MarkAbstract_$NOW.log
+time java  -Xms256m -Xmx12g -cp target/scala-3.3.7/MarkAbstract-assembly-2.16.2.jar:lib/decshighlighter_3-0.1.jar org.bireme.ma.MarkAbstract "$@" &>logs/MarkAbstract_$NOW.log
 MA="$?"
 
 if [ $MA -ne 0 ]; then
-  sendemail -f appofi@bireme.org -u "Mark Abstract Service - Xmls creation ERROR - $(date '+%Y%m%d')" -m "Mark Abstract Service - Erro na criacao dos xmls marcados - $1 $2 $3 $4 $5 $6" -t barbieri@paho.org -cc appofi@bireme.org -s esmeralda.bireme.br -a logs/MarkAbstract_$NOW.log
+  sendemail -f appofi@bireme.org -u "Mark Abstract Service - Xmls creation ERROR - $(date '+%Y%m%d')" -m "Mark Abstract Service - Erro na criacao dos xmls marcados - $*" -t barbieri@paho.org -cc appofi@bireme.org -s esmeralda.bireme.br -a logs/MarkAbstract_$NOW.log
   SM="$?"
   [ $SM -ne 0 ] && echo "Falha no envio de e-mail"
   exit 1

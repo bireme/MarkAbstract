@@ -16,6 +16,12 @@ class MarkAbstractServlet extends HttpServlet {
   private var mabs: MarkAbstract = _
   private var baseDir: Path = _   // inDir and outDir must be inside this directory
 
+  /**
+    * Initializes the servlet from its context parameters.
+    *
+    * @param config servlet configuration supplied by the container
+    * @throws ServletException if the allowed base directory is not configured
+    */
   override def init(config: ServletConfig): Unit = {
     super.init(config)
 
@@ -67,10 +73,24 @@ class MarkAbstractServlet extends HttpServlet {
     */
   private def processRequest(request: HttpServletRequest,
                              response: HttpServletResponse): Unit = {
+    /**
+      * Reads a required request parameter or returns a descriptive error.
+      *
+      * @param name HTTP parameter name
+      * @param description human-readable parameter description
+      * @return the parameter value, or the missing-parameter message
+      */
     def param(name: String,
               description: String): Either[String, String] =
       Option(request.getParameter(name)).toRight(s"Missing $description ($name parameter)")
 
+    /**
+      * Verifies that a requested directory resolves inside the configured base directory.
+      *
+      * @param name request parameter name used in an error message
+      * @param dir requested directory path
+      * @return the requested path when allowed, or a validation message
+      */
     def insideBaseDir(name: String,
                       dir: String): Either[String, String] =
       Either.cond(realPath(dir).startsWith(baseDir), dir, s"$name must be inside $baseDir")
